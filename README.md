@@ -1,4 +1,5 @@
 [![Travis](https://img.shields.io/travis/nero-services/nero.svg)](https://travis-ci.org/nero-services/nero)
+[![Crates.io](https://img.shields.io/crates/v/nero.svg)](https://crates.io/crates/nero)
 
 # Nero Core
 
