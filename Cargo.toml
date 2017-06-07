@@ -6,7 +6,7 @@ license = "MIT/Apache-2.0"
 repository = "https://github.com/nero-services/nero"
 description = "Safe, Asynchronous IRC Services"
 keywords = ["irc", "services", "ircu", "p10", "server"]
-categories = ["irc"]
+categories = ["asynchronous", "network-programming"]
 
 [dependencies]
 base64 = "0.5.0"
