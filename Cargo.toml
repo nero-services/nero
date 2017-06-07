@@ -2,6 +2,11 @@
 name = "nero"
 version = "0.0.1"
 authors = ["staticfox <staticfox@staticfox.net>"]
+license = "MIT/Apache-2.0"
+repository = "https://github.com/nero-services/nero"
+description = "Safe, Asynchronous IRC Services"
+keywords = ["irc", "services", "ircu", "p10", "server"]
+categories = ["irc"]
 
 [dependencies]
 base64 = "0.5.0"
@@ -17,3 +22,6 @@ serde_derive = "1.0"
 [[bin]]
 name = "nero"
 doc = false
+
+[badges]
+travis-ci = { repository = "nero-services/nero" }
