@@ -1,7 +1,7 @@
 use std::cell::{RefCell, RefMut};
 use std::rc::Rc;
 
-use net::NeroData;
+use core_data::NeroData;
 use net::ConnectionState;
 
 use channel::Channel;
@@ -259,11 +259,8 @@ impl Protocol for P10 {
 
             // println!("Looking for command '{}'", dv(&command));
 
-            match result {
-                Ok(_) => {},
-                Err(_) => {
-                    log(Error, "MAIN", format!("PARSE ERROR: {}", dv(&command)));
-                }
+            if let Err(_) = result {
+                log(Error, "MAIN", format!("PARSE ERROR: {}", dv(&message)));
             }
         }
     }

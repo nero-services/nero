@@ -1,4 +1,4 @@
-use net::NeroData;
+use core_data::NeroData;
 
 pub trait Protocol: Sized + Send + Sync + 'static {
     type ChanExt: ChanExtDefault + Send + Sync + ::std::fmt::Debug + 'static;

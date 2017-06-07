@@ -15,6 +15,7 @@ use p10::P10;
 
 pub mod channel;
 pub mod channel_member;
+pub mod core_data;
 pub mod config;
 pub mod logger;
 pub mod net;
