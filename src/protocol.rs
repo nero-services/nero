@@ -8,8 +8,8 @@ pub trait Protocol: Sized + Send + Sync + 'static {
     // type LoggerExt: LoggerExtDefault + Send + Sync + ::std::fmt::Debug + 'static;
 
     fn new() -> Self;
-    fn start_handshake(&mut self, me: &mut NeroData<Self>, ret: &mut Vec<Vec<u8>>);
-    fn process(&self, message: &[u8], me: &mut NeroData<Self>, ret: &mut Vec<Vec<u8>>);
+    fn start_handshake(&mut self, me: &mut NeroData<Self>);
+    fn process(&self, message: &[u8], me: &mut NeroData<Self>);
 }
 
 pub trait ChanExtDefault {

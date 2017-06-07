@@ -24,7 +24,7 @@ pub enum ConnectionState {
 #[derive(Debug)]
 pub struct WriteState {
     messages: Vec<Vec<u8>>,
-    writer:WriteHalf<TcpStream>,
+    writer: WriteHalf<TcpStream>,
 }
 
 pub struct NetState<P: Protocol> {
@@ -41,16 +41,27 @@ impl<P: Protocol> NetState<P> {
     }
 
     pub fn start_handshake(&mut self, messages: &mut Vec<Vec<u8>>) {
-        self.protocol.start_handshake(&mut self.core_data, messages);
+        self.protocol.start_handshake(&mut self.core_data);
+
+        for message in &self.core_data.write_buffer {
+            messages.push(message.to_vec());
+        }
+
+        self.core_data.write_buffer.clear();
     }
 
     pub fn process(&mut self, buffer: &mut Vec<u8>, messages: &mut Vec<Vec<u8>>) {
         {
             let message: &[u8] = trim_bytes_right(&buffer);
             println!("   {}", String::from_utf8_lossy(message).chars().filter(|c| ! c.is_control()).collect::<String>());
-            self.protocol.process(message, &mut self.core_data, messages);
+            self.protocol.process(message, &mut self.core_data);
         }
 
+        for message in &self.core_data.write_buffer {
+            messages.push(message.to_vec());
+        }
+
+        self.core_data.write_buffer.clear();
         buffer.clear();
     }
 }

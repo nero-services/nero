@@ -24,6 +24,7 @@ pub struct NeroData<P: Protocol> {
     pub bots: Vec<Bot>,
     pub events: Vec<IrcEvent>,
     pub config: Config,
+    pub write_buffer: Vec<Vec<u8>>,
 }
 
 impl<P: Protocol> NeroData<P> {
@@ -39,7 +40,12 @@ impl<P: Protocol> NeroData<P> {
             events: Vec::new(),
             config: config,
             bots: Vec::new(),
+            write_buffer: Vec::new(),
         }
+    }
+
+    pub fn add_to_buffer(&mut self, data: &[u8]) {
+        self.write_buffer.push(data.into());
     }
 
     pub fn load_plugins(&mut self) {

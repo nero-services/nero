@@ -173,7 +173,7 @@ impl Protocol for P10 {
         }
     }
 
-    fn start_handshake(&mut self, core_data: &mut NeroData<Self>, ret: &mut Vec<Vec<u8>>) {
+    fn start_handshake(&mut self, core_data: &mut NeroData<Self>) {
         if core_data.state == ConnectionState::Connecting {
             core_data.state = ConnectionState::Bursting;
 
@@ -184,14 +184,12 @@ impl Protocol for P10 {
             let numeric = &numeric_optional.unwrap();
             let epoch = epoch_int();
 
-            ret.extend(vec![
-                format!("PASS :{}", send_pass),
-                format!("SERVER {} 1 {} {} J10 {}A]] +s6 :{}", hostname, epoch, epoch, numeric, description),
-            ].into_iter().map(Into::into));
+            core_data.add_to_buffer(&format!("PASS :{}", send_pass).as_bytes());
+            core_data.add_to_buffer(&format!("SERVER {} 1 {} {} J10 {}A]] +s6 :{}", hostname, epoch, epoch, numeric, description).as_bytes());
         }
     }
 
-    fn process(&self, message: &[u8], core_data: &mut NeroData<Self>, ret: &mut Vec<Vec<u8>>) {
+    fn process(&self, message: &[u8], core_data: &mut NeroData<Self>) {
         core_data.now = epoch_int() + self.skew;
 
         let (argc, argv): (usize, Vec<Vec<u8>>) = split_line(message, true, 200);
@@ -247,12 +245,12 @@ impl Protocol for P10 {
             let result = match command {
                 b"SERVER" => p10_cmd_server(core_data, &origin, argc-cmd, &newargv),
                 b"S" => p10_cmd_server(core_data, &origin, argc-cmd, &newargv),
-                b"N" => p10_cmd_n(core_data, &origin, argc-cmd, &newargv, ret),
+                b"N" => p10_cmd_n(core_data, &origin, argc-cmd, &newargv),
                 b"B" => p10_cmd_b(core_data, argc-cmd, &newargv),
                 b"T" => p10_cmd_t(core_data, &origin, argc-cmd, &newargv),
-                b"G" => p10_cmd_g(core_data, &origin, argc-cmd, &newargv, ret),
+                b"G" => p10_cmd_g(core_data, &origin, argc-cmd, &newargv),
                 b"GL" => p10_cmd_gl(core_data, &origin, argc-cmd, &newargv),
-                b"EB" => p10_cmd_eb(core_data, &origin, ret),
+                b"EB" => p10_cmd_eb(core_data, &origin),
                 b"EA" => p10_cmd_ea(core_data, &origin),
                 _ => Err(()),
             };
@@ -315,6 +313,7 @@ fn p10_cmd_server(core_data: &mut NeroData<P10>, origin: &[u8], argc: usize, arg
 
     if core_data.uplink.is_none() {
         core_data.uplink = Some(shared_server.clone());
+        burst_our_users(core_data);
     } else {
         let uplink = find_server_numeric(core_data, origin);
         match uplink {
@@ -328,7 +327,7 @@ fn p10_cmd_server(core_data: &mut NeroData<P10>, origin: &[u8], argc: usize, arg
     Ok(())
 }
 
-fn p10_cmd_eb(core_data: &mut NeroData<P10>, origin: &[u8], ret: &mut Vec<Vec<u8>>) -> Result<(), ()> {
+fn p10_cmd_eb(core_data: &mut NeroData<P10>, origin: &[u8]) -> Result<(), ()> {
     let my_uplink = core_data.uplink.clone().unwrap();
     let my_hostname = my_uplink.borrow().hostname.clone();
     let sender_rc = match find_server_numeric(core_data, origin).map(|x| x.clone()) {
@@ -339,8 +338,11 @@ fn p10_cmd_eb(core_data: &mut NeroData<P10>, origin: &[u8], ret: &mut Vec<Vec<u8
     let mut sender = sender_rc.borrow_mut();
 
     if sender.hostname == my_hostname {
-        ret.push(p10_irc_eob(core_data));
-        ret.push(p10_irc_eob_ack(core_data));
+        let eob_message = &p10_irc_eob(core_data);
+        let eob_ack_message = &p10_irc_eob_ack(core_data);
+
+        core_data.add_to_buffer(eob_message);
+        core_data.add_to_buffer(eob_ack_message);
     }
 
     sender.ext.self_burst = false;
@@ -356,9 +358,10 @@ fn p10_cmd_gl(_core_data: &mut NeroData<P10>, _origin: &[u8], _argc: usize, _arg
     Ok(())
 }
 
-fn p10_cmd_g(core_data: &mut NeroData<P10>, _origin: &[u8], argc: usize, argv: &[Vec<u8>], ret: &mut Vec<Vec<u8>>) -> Result<(), ()> {
+fn p10_cmd_g(core_data: &mut NeroData<P10>, _origin: &[u8], argc: usize, argv: &[Vec<u8>]) -> Result<(), ()> {
     if argc > 3 {
-        ret.push(p10_irc_pong_asll(core_data, &argv[2], &argv[3]));
+        let pong_asl_message = &p10_irc_pong_asll(core_data, &argv[2], &argv[3]);
+        core_data.add_to_buffer(pong_asl_message);
     }
 
     Ok(())
@@ -512,7 +515,7 @@ fn p10_cmd_b(core_data: &mut NeroData<P10>, argc: usize, argv: &[Vec<u8>]) -> Re
 }
 
 // AB N SightBlind 1 1496365558 kvirc 127.0.0.1 +owgrh blindsight kvirc@blindsight.users.gamesurge B]AAAB ABAAB :KVIrc 4.9.2 Aria http://kvirc.net/
-fn p10_cmd_n(core_data: &mut NeroData<P10>, origin: &[u8], argc: usize, argv: &[Vec<u8>], _ret: &mut Vec<Vec<u8>>) -> Result<(), ()> {
+fn p10_cmd_n(core_data: &mut NeroData<P10>, origin: &[u8], argc: usize, argv: &[Vec<u8>]) -> Result<(), ()> {
     let option_user = find_user_numeric(core_data, &origin.to_vec()).map(|x| x.clone());
     // println!("Looking for nick, argc={}, origin={}", argc, dv(origin));
     if option_user.is_some() {
@@ -924,7 +927,39 @@ fn find_user_numeric<'a>(core_data: &'a NeroData<P10>, numeric: &Vec<u8>) -> Opt
     None
 }
 
+fn burst_our_users(core_data: &mut NeroData<P10>) {
+    let uplink_optional = core_data.uplink.clone();
+    let uplink = uplink_optional.unwrap().clone();
+    let mut local_users = Vec::new();
+
+    for bot in &core_data.bots {
+        let mut user_node: User<P10> = User::<P10>::new(&bot.nick.as_bytes(), &bot.ident.as_bytes(), &bot.hostname.as_bytes(), uplink.clone());
+        user_node.ip = "255.255.255.255".into();
+        user_node.gecos = bot.gecos.as_bytes().to_vec();
+        local_users.push(user_node);
+    }
+
+    for mut user in local_users {
+        p10_set_user_modes(&mut user, "+iok".as_bytes());
+
+        p10_irc_user(core_data, &user);
+        let shared_user = Rc::new(RefCell::new(user));
+        uplink.borrow_mut().users.push(shared_user.clone());
+        core_data.users.push(shared_user.clone());
+    }
+}
+
 // IRC Command builders
+fn p10_irc_user(core_data: &mut NeroData<P10>, user: &User<P10>) {
+    let numeric_optional = core_data.config.uplink.numeric.clone();
+    let numeric = numeric_optional.unwrap();
+    let now = core_data.now;
+
+    core_data.add_to_buffer(&format!("{} N {} 1 {} {} {} +iok _ {}AAA :{}",
+        numeric, dv(&user.nick), now, dv(&user.ident),
+        dv(&user.host), numeric, dv(&user.gecos)).into_bytes());
+}
+
 fn p10_irc_eob(core_data: &NeroData<P10>) -> Vec<u8> {
     let numeric_optional = core_data.config.uplink.numeric.clone();
     let numeric = numeric_optional.unwrap();
