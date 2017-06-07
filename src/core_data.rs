@@ -83,7 +83,7 @@ impl<P: Protocol> NeroData<P> {
         for mut event in &mut self.events {
             if event.name == hook {
                 let mut plugin = self.plugins.iter_mut().filter(|x| ptr::eq(&***x, event.plugin_ptr)).next().unwrap();
-                (event.f.0)(&mut **plugin, origin, argc, &argv);
+                let _res = (event.f.0)(&mut **plugin, origin, argc, &argv);
             }
         }
     }

@@ -512,7 +512,7 @@ fn p10_cmd_b(core_data: &mut NeroData<P10>, argc: usize, argv: &[Vec<u8>]) -> Re
 }
 
 // AB N SightBlind 1 1496365558 kvirc 127.0.0.1 +owgrh blindsight kvirc@blindsight.users.gamesurge B]AAAB ABAAB :KVIrc 4.9.2 Aria http://kvirc.net/
-fn p10_cmd_n(core_data: &mut NeroData<P10>, origin: &[u8], argc: usize, argv: &[Vec<u8>], ret: &mut Vec<Vec<u8>>) -> Result<(), ()> {
+fn p10_cmd_n(core_data: &mut NeroData<P10>, origin: &[u8], argc: usize, argv: &[Vec<u8>], _ret: &mut Vec<Vec<u8>>) -> Result<(), ()> {
     let option_user = find_user_numeric(core_data, &origin.to_vec()).map(|x| x.clone());
     // println!("Looking for nick, argc={}, origin={}", argc, dv(origin));
     if option_user.is_some() {
