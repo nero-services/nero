@@ -247,7 +247,7 @@ impl Protocol for P10 {
             let result = match command {
                 b"SERVER" => p10_cmd_server(core_data, &origin, argc-cmd, &newargv),
                 b"S" => p10_cmd_server(core_data, &origin, argc-cmd, &newargv),
-                b"N" => p10_cmd_n(core_data, &origin, argc-cmd, &newargv),
+                b"N" => p10_cmd_n(core_data, &origin, argc-cmd, &newargv, ret),
                 b"B" => p10_cmd_b(core_data, argc-cmd, &newargv),
                 b"T" => p10_cmd_t(core_data, &origin, argc-cmd, &newargv),
                 b"G" => p10_cmd_g(core_data, &origin, argc-cmd, &newargv, ret),
@@ -515,7 +515,7 @@ fn p10_cmd_b(core_data: &mut NeroData<P10>, argc: usize, argv: &[Vec<u8>]) -> Re
 }
 
 // AB N SightBlind 1 1496365558 kvirc 127.0.0.1 +owgrh blindsight kvirc@blindsight.users.gamesurge B]AAAB ABAAB :KVIrc 4.9.2 Aria http://kvirc.net/
-fn p10_cmd_n(core_data: &mut NeroData<P10>, origin: &[u8], argc: usize, argv: &[Vec<u8>]) -> Result<(), ()> {
+fn p10_cmd_n(core_data: &mut NeroData<P10>, origin: &[u8], argc: usize, argv: &[Vec<u8>], ret: &mut Vec<Vec<u8>>) -> Result<(), ()> {
     let option_user = find_user_numeric(core_data, &origin.to_vec()).map(|x| x.clone());
     // println!("Looking for nick, argc={}, origin={}", argc, dv(origin));
     if option_user.is_some() {
@@ -545,6 +545,7 @@ fn p10_cmd_n(core_data: &mut NeroData<P10>, origin: &[u8], argc: usize, argv: &[
             Ok(user_rc) => {
                 let user = user_rc.borrow();
                 log(Debug, "MAIN", format!("User {} connecting from {}", dv(&user.nick), dv(&user.uplink.borrow().hostname)));
+                core_data.fire_hook("on_connect".into(), origin, argc, argv.to_vec());
             },
             Err(_) => {
                 return Err(());

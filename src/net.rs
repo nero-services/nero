@@ -13,6 +13,9 @@ use futures::future::{Loop, loop_fn};
 
 use channel::Channel;
 use config;
+use logger::log;
+use logger::LogLevel::*;
+use plugin::IrcEvent;
 use plugin_handler::LoadedPlugin;
 use protocol::Protocol;
 use user::User;
@@ -35,6 +38,7 @@ pub struct NeroData<P: Protocol> {
     pub servers: Vec<Rc<RefCell<Server<P>>>>,
     pub users: Vec<Rc<RefCell<User<P>>>>,
     pub plugins: Vec<LoadedPlugin>,
+    pub events: Vec<IrcEvent>,
     pub config: config::Config
 }
 
@@ -118,7 +122,19 @@ impl<P: Protocol> NeroData<P> {
             servers: Vec::new(),
             users: Vec::new(),
             plugins: Vec::new(),
+            events: Vec::new(),
             config: config,
+        }
+    }
+
+    pub fn fire_hook(&mut self, hook: String, origin: &[u8], argc: usize, argv: Vec<Vec<u8>>) {
+        use std::ptr;
+
+        for mut event in &mut self.events {
+            if event.name == hook {
+                let mut plugin = self.plugins.iter_mut().filter(|x| ptr::eq(&***x, event.plugin_ptr)).next().unwrap();
+                (event.f.0)(&mut **plugin, origin, argc, &argv);
+            }
         }
     }
 }
@@ -157,14 +173,24 @@ pub fn boot<P: Protocol>(handle: Handle) -> Box<Future<Item=(), Error=io::Error>
                 let dynload = LoadedPlugin::new(data.file.as_str());
 
                 match dynload {
-                    Ok(plugin) => {
-                        if (plugin.load)() {
-                            println!("Loaded plugin {}", plugin.name);
-                            net_state.core_data.plugins.push(plugin);
-                        }
+                    Ok(mut plugin) => {
+
+                        match plugin.register_hooks() {
+                            Some(events) => {
+                                for event in events {
+                                    log(Debug, "NET", format!("Registered hook"));
+                                    net_state.core_data.events.push(event);
+                                }
+                            },
+                            None => {},
+                        };
+
+                        log(Debug, "NET", format!("Loaded plugin {}", plugin.name()));
+                        net_state.core_data.plugins.push(plugin);
+
                     }
                     Err(e) => {
-                        panic!("Failed to load {} shared object: {}", data.file, e)
+                        log(Error, "NET", format!("Failed to load {} shared object: {}", data.file, e));
                     }
                 };
             }
