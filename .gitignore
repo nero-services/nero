@@ -1,0 +1,5 @@
+target/
+**/*.rs.bk
+etc/nero.toml
+plugins/*
+!plugins/.keep

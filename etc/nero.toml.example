@@ -1,0 +1,13 @@
+[uplink]
+ip = "127.0.0.1"
+port = 4200
+protocol = "P10"
+hostname = "Services.Network.Net"
+description = "Nero IRC Services"
+send_pass = "secure"
+recv_pass = "secure"
+numeric = "AA"
+
+[[plugins]]
+file = "libnero_control.so"
+load = true
