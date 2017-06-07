@@ -38,6 +38,7 @@ pub trait Plugin: 'static {
     fn description(&mut self) -> String;
     fn register_hooks(&mut self) -> Option<Vec<IrcEvent>>;
     unsafe fn get_type_id(&self) -> TypeId { TypeId::of::<Self>() }
+    fn register_bots(&mut self) -> Option<Vec<Bot>>;
     // fn bot_privmsg(&mut self, target: &[u8], message: &[u8]);
 }
 
