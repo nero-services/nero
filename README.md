@@ -23,5 +23,6 @@ Things needed to be done:
 * Logging
 * P10 Gline handling
 * Better Protocol API
+* Documentation
 
 **Nero is currently still in its infancy with a lot of core code still yet to be written**
