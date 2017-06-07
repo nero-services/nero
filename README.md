@@ -1,3 +1,5 @@
+[![Travis](https://img.shields.io/travis/nero-services/nero.svg)]()
+
 # Nero Core
 
 ### What is Nero?
