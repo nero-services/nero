@@ -12,6 +12,7 @@ use futures::future::{Loop, loop_fn};
 use config;
 use core_data::NeroData;
 use protocol::Protocol;
+use utils::trim_bytes_right;
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum ConnectionState {
@@ -100,19 +101,6 @@ impl WriteState {
             }
         }).boxed()
     }
-}
-
-pub fn trim_bytes_right(mut input: &[u8]) -> &[u8] {
-    loop {
-        match input.iter().next_back() {
-            Some(&b'\r') | Some(&b'\n') => {
-                input = &input[0..input.len()-1]
-            }
-            _ => break,
-        }
-    }
-
-    input
 }
 
 pub fn boot<P: Protocol>(handle: Handle) -> Box<Future<Item=(), Error=io::Error>> {
