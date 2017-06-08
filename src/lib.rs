@@ -24,6 +24,7 @@ pub mod plugin;
 pub mod protocol;
 pub mod server;
 pub mod user;
+pub mod utils;
 pub mod plugin_handler;
 
 pub fn run() {

@@ -1,11 +1,12 @@
 use std::any::TypeId;
+use core_data::PluginApi;
 
 pub type LoadFunc = fn() -> Result<Box<Plugin>, ()>;
 pub type UnloadFunc = fn() -> bool;
-pub type HookFunc = Box<FnMut(&mut Plugin, &[u8], usize, &[Vec<u8>]) -> Result<Option<Vec<Vec<u8>>>, HookError>>;
+pub type HookFunc = Box<FnMut(&mut PluginApi, &mut Plugin, &[u8], usize, &[Vec<u8>]) -> Result<Option<Vec<Vec<u8>>>, HookError>>;
 
 pub struct HookFuncWrapper(pub HookFunc);
-pub const MAGIC: &'static str = "COOKIES";
+pub const MAGIC: &'static str = "PANCAKES";
 
 #[derive(Debug)]
 pub struct HookError {

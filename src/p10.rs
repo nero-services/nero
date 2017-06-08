@@ -9,7 +9,8 @@ use channel_member::ChannelMember;
 use logger::log;
 use logger::LogLevel::*;
 use protocol::{Protocol, ChanExtDefault, MemberExtDefault, ServExtDefault, UserExtDefault};
-use user::User;
+use user::{BaseUser, User};
+use utils::dv;
 use server::Server;
 
 #[derive(Debug, Copy, Clone)]
@@ -114,12 +115,6 @@ bitflags! {
         const MMODE_VOICE       = 1 << 1;
         const MMODE_HIDDEN      = 1 << 2;
     }
-}
-
-// Utilities
-use std::borrow::Cow;
-pub fn dv(input: &[u8]) -> Cow<str> {
-    String::from_utf8_lossy(&input)
 }
 
 impl ServExtDefault for P10ServExt {
@@ -262,6 +257,17 @@ impl Protocol for P10 {
             }
         }
     }
+
+    fn find_user_by_numeric(&self, users: &Vec<Rc<RefCell<User<P10>>>>, numeric: &[u8]) -> Option<BaseUser> {
+        for user in users {
+            let borrowed = user.borrow();
+            if borrowed.ext.numeric == numeric {
+                return Some(borrowed.base.clone());
+            }
+        }
+
+        None
+    }
 }
 
 // Commands
@@ -278,7 +284,7 @@ fn p10_cmd_server(core_data: &mut NeroData<P10>, origin: &[u8], argc: usize, arg
 
     match str::from_utf8(&argv[2]) {
         Ok(str_int) => {
-            server.hops = match String::from(str_int).parse() {
+            server.base.hops = match String::from(str_int).parse() {
                 Ok(i) => i,
                 Err(_) => 0,
             };
@@ -288,7 +294,7 @@ fn p10_cmd_server(core_data: &mut NeroData<P10>, origin: &[u8], argc: usize, arg
 
     match str::from_utf8(&argv[3]) {
         Ok(str_int) => {
-            server.boot = match String::from(str_int).parse() {
+            server.base.boot = match String::from(str_int).parse() {
                 Ok(i) => i,
                 Err(_) => 0,
             };
@@ -298,7 +304,7 @@ fn p10_cmd_server(core_data: &mut NeroData<P10>, origin: &[u8], argc: usize, arg
 
     match str::from_utf8(&argv[4]) {
         Ok(str_int) => {
-            server.link_time = match String::from(str_int).parse() {
+            server.base.link_time = match String::from(str_int).parse() {
                 Ok(i) => i,
                 Err(_) => 0,
             };
@@ -307,7 +313,7 @@ fn p10_cmd_server(core_data: &mut NeroData<P10>, origin: &[u8], argc: usize, arg
     }
 
     log(Debug, "MAIN", format!("Added server {} with numeric {} and description {}",
-        dv(&server.hostname), dv(&server.ext.numeric), dv(&server.description)));
+        dv(&server.base.hostname), dv(&server.ext.numeric), dv(&server.base.description)));
 
     let shared_server = Rc::new(RefCell::new(server));
 
@@ -329,7 +335,7 @@ fn p10_cmd_server(core_data: &mut NeroData<P10>, origin: &[u8], argc: usize, arg
 
 fn p10_cmd_eb(core_data: &mut NeroData<P10>, origin: &[u8]) -> Result<(), ()> {
     let my_uplink = core_data.uplink.clone().unwrap();
-    let my_hostname = my_uplink.borrow().hostname.clone();
+    let my_hostname = my_uplink.borrow().base.hostname.clone();
     let sender_rc = match find_server_numeric(core_data, origin).map(|x| x.clone()) {
         Some(server) => server,
         None => return Err(()),
@@ -337,7 +343,7 @@ fn p10_cmd_eb(core_data: &mut NeroData<P10>, origin: &[u8]) -> Result<(), ()> {
 
     let mut sender = sender_rc.borrow_mut();
 
-    if sender.hostname == my_hostname {
+    if sender.base.hostname == my_hostname {
         let eob_message = &p10_irc_eob(core_data);
         let eob_ack_message = &p10_irc_eob_ack(core_data);
 
@@ -396,7 +402,7 @@ fn p10_cmd_t(core_data: &mut NeroData<P10>, origin: &[u8], argc: usize, argv: &[
     let option_user = find_user_numeric(core_data, &origin.to_vec()).map(|x| x.clone());
     let mut channel = channel_rc.borrow_mut();
     p10_set_channel_topic(core_data, &mut channel, option_user, &argv[argc-1]);
-    channel.topic_time = topic_time;
+    channel.base.topic_time = topic_time;
 
     Ok(())
 }
@@ -478,13 +484,13 @@ fn p10_cmd_b(core_data: &mut NeroData<P10>, argc: usize, argv: &[Vec<u8>]) -> Re
             match p10_add_channel_member(core_data, &mut channel, &userbuf) {
                 Ok(member_b) => {
                     let mut member = member_b.borrow_mut();
-                    member.modes = member_modes;
+                    member.base.modes = member_modes;
                     member.ext.oplevel = oplevel;
                     // let user = member.user.borrow();
-                    // println!("Set mode={}, oplevel={} for {}", member.modes, member.ext.oplevel, dv(&user.nick));
+                    // println!("Set mode={}, oplevel={} for {}", member.base.modes, member.ext.oplevel, dv(&user.base.nick));
                 }
                 Err(_) => log(Error, "MAIN", format!("Failed to find numeric member {} in channel {}",
-                    dv(&userbuf), dv(&channel.borrow().name))), // TODO
+                    dv(&userbuf), dv(&channel.borrow().base.name))), // TODO
             }
 
             userbuf = Vec::new();
@@ -525,8 +531,8 @@ fn p10_cmd_n(core_data: &mut NeroData<P10>, origin: &[u8], argc: usize, argv: &[
         }
 
         let user = option_user.unwrap();
-        log(Debug, "MAIN", format!("User '{}' changing nick to '{}'", dv(&user.borrow().nick), dv(&argv[1])));
-        user.borrow_mut().nick = argv[1].clone();
+        log(Debug, "MAIN", format!("User '{}' changing nick to '{}'", dv(&user.borrow().base.nick), dv(&argv[1])));
+        user.borrow_mut().base.nick = argv[1].clone();
     } else {
         // println!("Couldnt find user, adding");
         if argc < 9 {
@@ -544,7 +550,7 @@ fn p10_cmd_n(core_data: &mut NeroData<P10>, origin: &[u8], argc: usize, argv: &[
         match user_result {
             Ok(user_rc) => {
                 let user = user_rc.borrow();
-                log(Debug, "MAIN", format!("User {} connecting from {}", dv(&user.nick), dv(&user.uplink.borrow().hostname)));
+                log(Debug, "MAIN", format!("User {} connecting from {}", dv(&user.base.nick), dv(&user.uplink.borrow().base.hostname)));
                 core_data.fire_hook("on_connect".into(), origin, argc, argv.to_vec());
             },
             Err(_) => {
@@ -559,17 +565,17 @@ fn p10_cmd_n(core_data: &mut NeroData<P10>, origin: &[u8], argc: usize, argv: &[
 // Helpers
 
 fn p10_set_channel_topic(core_data: &mut NeroData<P10>, channel: &mut RefMut<Channel<P10>>, user: Option<Rc<RefCell<User<P10>>>>, topic: &[u8]) {
-    //let old_topic: Vec<u8> = channel.topic.to_vec().clone();
-    channel.topic = topic.to_vec().clone();
-    channel.topic_time = core_data.now;
+    //let old_topic: Vec<u8> = channel.base.topic.to_vec().clone();
+    channel.base.topic = topic.to_vec().clone();
+    channel.base.topic_time = core_data.now;
     match user {
         Some(u) => {
-            channel.topic_nick = u.borrow().nick.clone();
+            channel.base.topic_nick = u.borrow().base.nick.clone();
         },
         None => {},
     }
 
-    // println!("Topic for {} is now {} set by {}", dv(&channel.name), dv(&channel.topic), dv(&channel.topic_nick));
+    // println!("Topic for {} is now {} set by {}", dv(&channel.name), dv(&channel.base.topic), dv(&channel.base.topic_nick));
 }
 
 fn p10_add_channel_member(core_data: &mut NeroData<P10>, channel: &mut Rc<RefCell<Channel<P10>>>, userbuf: &[u8]) -> Result<Rc<RefCell<ChannelMember<P10>>>, ()> {
@@ -579,17 +585,17 @@ fn p10_add_channel_member(core_data: &mut NeroData<P10>, channel: &mut Rc<RefCel
     };
 
     let mut member = ChannelMember::<P10>::new(user.clone());
-    member.idle = core_data.now;
+    member.base.idle = core_data.now;
 
     let shared_member = Rc::new(RefCell::new(member));
     let mut c = channel.borrow_mut();
     c.members.push(shared_member.clone());
 
-    if c.members.len() == 1 && c.modes & CMODE_REGISTERED.bits() == 0 && c.modes & CMODE_APASS.bits() == 0 {
-        shared_member.borrow_mut().modes |= MMODE_CHANOP.bits();
+    if c.members.len() == 1 && c.base.modes & CMODE_REGISTERED.bits() == 0 && c.base.modes & CMODE_APASS.bits() == 0 {
+        shared_member.borrow_mut().base.modes |= MMODE_CHANOP.bits();
     }
 
-    log(Debug, "MAIN", format!("Added member {} to channel {}", dv(&user.borrow().nick), dv(&c.name)));
+    log(Debug, "MAIN", format!("Added member {} to channel {}", dv(&user.borrow().base.nick), dv(&c.base.name)));
 
     Ok(shared_member)
 }
@@ -598,10 +604,10 @@ fn p10_add_channel(core_data: &mut NeroData<P10>, name: &[u8], created_time: u64
     match find_channel(core_data, name) {
         Some(current_channel_rc) => {
             let mut current_channel = current_channel_rc.borrow_mut();
-            if current_channel.created > created_time {
-                current_channel.created = created_time;
-                current_channel.topic_time = 0;
-                current_channel.topic = Vec::new();
+            if current_channel.base.created > created_time {
+                current_channel.base.created = created_time;
+                current_channel.base.topic_time = 0;
+                current_channel.base.topic = Vec::new();
             }
 
             return Some(current_channel_rc.clone());
@@ -648,12 +654,12 @@ fn p10_set_channel_modes(channel: &mut Channel<P10>, mode_list: &[u8]) {
 
         for ii in 1..split_modes.len() {
             if can_set_setmodes(&channel, &mut found_modes, CMODE_LIMIT.bits()) {
-                channel.limit = str::from_utf8(&split_modes[ii]).unwrap().parse().unwrap();
+                channel.base.limit = str::from_utf8(&split_modes[ii]).unwrap().parse().unwrap();
                 continue;
             }
 
             if can_set_setmodes(&channel, &mut found_modes, CMODE_KEY.bits()) {
-                channel.key = Some(split_modes[ii].clone());
+                channel.base.key = Some(split_modes[ii].clone());
                 continue;
             }
 
@@ -672,10 +678,10 @@ fn p10_set_channel_modes(channel: &mut Channel<P10>, mode_list: &[u8]) {
 
 fn p10_ban_channel_user(channel: &mut Channel<P10>, adding: bool, ban: &[u8]) {
     if adding {
-        channel.bans.push(ban.to_vec().clone());
+        channel.base.bans.push(ban.to_vec().clone());
         // println!("Added ban for {} in {}", dv(&ban), dv(&channel.name));
     } else {
-        channel.bans.iter().position(|n| n == &ban).map(|e| channel.bans.remove(e));
+        channel.base.bans.iter().position(|n| n == &ban).map(|e| channel.base.bans.remove(e));
         // println!("Removed ban {} in {}", dv(&ban), dv(&channel.name));
     }
 }
@@ -702,8 +708,8 @@ fn p10_add_user(core_data: &mut NeroData<P10>, option_uplink: Option<Rc<RefCell<
     // }
 
     let mut user_node: User<P10> = User::<P10>::new(&nick, &ident, &hostname, uplink.clone());
-    user_node.ip = decimal_ip.to_vec();
-    user_node.gecos = gecos.to_vec();
+    user_node.base.ip = decimal_ip.to_vec();
+    user_node.base.gecos = gecos.to_vec();
     user_node.ext.numeric = numeric.to_vec();
 
     match str::from_utf8(timestamp) {
@@ -749,16 +755,16 @@ fn p10_add_channel_mode(channel: &mut Channel<P10>, adding: bool, mode: &u8) {
 
 fn p10_set_channel_mode_helper(channel: &mut Channel<P10>, adding: bool, flag: u64) {
     if adding {
-        channel.modes |= flag;
+        channel.base.modes |= flag;
         // println!("Channel {} adding mode {}", dv(&channel.name), *mode as char);
     } else {
-        channel.modes &= flag;
+        channel.base.modes &= flag;
         // println!("Channel {} removing mode {}", dv(&channel.name), *mode as char);
     }
 }
 
 fn p10_channel_has_mode(channel: &Channel<P10>, flag: u64) -> bool {
-    channel.modes & flag > 0
+    channel.base.modes & flag > 0
 }
 
 fn p10_set_user_modes(user: &mut User<P10>, modes: &[u8]) {
@@ -826,7 +832,7 @@ fn p10_set_user_modes(user: &mut User<P10>, modes: &[u8]) {
                     }
 
                     p10_set_user_mode_helper(user, adding, UMODE_STAMPED.bits());
-                    user.account = tag;
+                    user.base.account = tag;
                 }
             }
             &b'h' => {
@@ -860,15 +866,15 @@ fn p10_set_user_modes(user: &mut User<P10>, modes: &[u8]) {
                     if back.len() > 0 {
                         user.ext.fakeident = front;
                         user.ext.fakehost = back;
-                        // println!("Set fakehost for '{}' to '{}'@'{}'", dv(&user.nick), dv(&user.ext.fakeident), dv(&user.ext.fakehost));
+                        // println!("Set fakehost for '{}' to '{}'@'{}'", dv(&user.base.nick), dv(&user.ext.fakeident), dv(&user.ext.fakehost));
                     } else {
                         user.ext.fakehost = front;
-                        // println!("Set fakehost for '{}' to '{}'", dv(&user.nick), dv(&user.ext.fakehost));
+                        // println!("Set fakehost for '{}' to '{}'", dv(&user.base.nick), dv(&user.ext.fakehost));
                     }
                 }
             }
             _ => {
-                log(Error, "MAIN", format!("Got unknown mode {} for user {}", dv(&user.nick), *mode as char));
+                log(Error, "MAIN", format!("Got unknown mode {} for user {}", dv(&user.base.nick), *mode as char));
             }
         }
     }
@@ -876,11 +882,11 @@ fn p10_set_user_modes(user: &mut User<P10>, modes: &[u8]) {
 
 fn p10_set_user_mode_helper(user: &mut User<P10>, adding: bool, flag: u64) {
     if adding {
-        user.modes |= flag;
-        // println!("User {} adding mode {}", dv(&user.nick), *mode as char);
+        user.base.modes |= flag;
+        // println!("User {} adding mode {}", dv(&user.base.nick), *mode as char);
     } else {
-        user.modes &= flag;
-        // println!("User {} removing mode {}", dv(&user.nick), *mode as char);
+        user.base.modes &= flag;
+        // println!("User {} removing mode {}", dv(&user.base.nick), *mode as char);
     }
 }
 
@@ -899,7 +905,7 @@ fn find_channel<'a>(core_data: &'a NeroData<P10>, name: &[u8]) -> Option<&'a Rc<
     let lower: &[u8] = &u8_slice_to_lower(name);
 
     for channel in &core_data.channels {
-        if &channel.borrow().name as &[u8] == lower {
+        if &channel.borrow().base.name as &[u8] == lower {
             return Some(channel);
         }
     }
@@ -934,8 +940,8 @@ fn burst_our_users(core_data: &mut NeroData<P10>) {
 
     for bot in &core_data.bots {
         let mut user_node: User<P10> = User::<P10>::new(&bot.nick.as_bytes(), &bot.ident.as_bytes(), &bot.hostname.as_bytes(), uplink.clone());
-        user_node.ip = "255.255.255.255".into();
-        user_node.gecos = bot.gecos.as_bytes().to_vec();
+        user_node.base.ip = "255.255.255.255".into();
+        user_node.base.gecos = bot.gecos.as_bytes().to_vec();
         local_users.push(user_node);
     }
 
@@ -956,8 +962,8 @@ fn p10_irc_user(core_data: &mut NeroData<P10>, user: &User<P10>) {
     let now = core_data.now;
 
     core_data.add_to_buffer(&format!("{} N {} 1 {} {} {} +iok _ {}AAA :{}",
-        numeric, dv(&user.nick), now, dv(&user.ident),
-        dv(&user.host), numeric, dv(&user.gecos)).into_bytes());
+        numeric, dv(&user.base.nick), now, dv(&user.base.ident),
+        dv(&user.base.host), numeric, dv(&user.base.gecos)).into_bytes());
 }
 
 fn p10_irc_eob(core_data: &NeroData<P10>) -> Vec<u8> {
@@ -1158,17 +1164,17 @@ fn test_set_user_modes() {
     let mode_string: &[u8] = &String::from("+owgrh blindsight someu@someh").into_bytes();
     p10_set_user_modes(&mut user, mode_string);
 
-    assert!(user.modes & UMODE_STAMPED.bits() > 0);
-    assert!(user.modes & UMODE_OPER.bits() > 0);
-    assert!(user.modes & UMODE_GLOBAL.bits() > 0);
-    assert!(user.modes & UMODE_HIDDEN_HOST.bits() == 0);
+    assert!(user.base.modes & UMODE_STAMPED.bits() > 0);
+    assert!(user.base.modes & UMODE_OPER.bits() > 0);
+    assert!(user.base.modes & UMODE_GLOBAL.bits() > 0);
+    assert!(user.base.modes & UMODE_HIDDEN_HOST.bits() == 0);
 
     let mode_string: &[u8] = &String::from("+x").into_bytes();
     p10_set_user_modes(&mut user, mode_string);
-    assert!(user.modes & UMODE_HIDDEN_HOST.bits() > 0);
-    assert!(user.modes & UMODE_STAMPED.bits() > 0);
-    assert!(user.modes & UMODE_OPER.bits() > 0);
-    assert!(user.modes & UMODE_GLOBAL.bits() > 0);
+    assert!(user.base.modes & UMODE_HIDDEN_HOST.bits() > 0);
+    assert!(user.base.modes & UMODE_STAMPED.bits() > 0);
+    assert!(user.base.modes & UMODE_OPER.bits() > 0);
+    assert!(user.base.modes & UMODE_GLOBAL.bits() > 0);
 }
 
 #[test]
@@ -1238,17 +1244,17 @@ fn test_parses_channel_bans() {
     let mut channel = test_make_channel();
     let bans_string: &[u8] = &String::from("*!*@test.host.a *ident~!*@* *!*@127.0.0.1").into_bytes();
     p10_set_channel_bans(&mut channel, bans_string);
-    assert_eq!(channel.bans.len(), 3);
-    assert!(channel.bans.iter().position(|n| n == &format!("*!*@test.host.a").into_bytes().to_vec()).is_some());
-    assert!(channel.bans.iter().position(|n| n == &format!("*ident~!*@*").into_bytes().to_vec()).is_some());
-    assert!(channel.bans.iter().position(|n| n == &format!("*!*@127.0.0.1").into_bytes().to_vec()).is_some());
-    assert!(channel.bans.iter().position(|n| n == &format!("*!*@*").into_bytes().to_vec()).is_none());
+    assert_eq!(channel.base.bans.len(), 3);
+    assert!(channel.base.bans.iter().position(|n| n == &format!("*!*@test.host.a").into_bytes().to_vec()).is_some());
+    assert!(channel.base.bans.iter().position(|n| n == &format!("*ident~!*@*").into_bytes().to_vec()).is_some());
+    assert!(channel.base.bans.iter().position(|n| n == &format!("*!*@127.0.0.1").into_bytes().to_vec()).is_some());
+    assert!(channel.base.bans.iter().position(|n| n == &format!("*!*@*").into_bytes().to_vec()).is_none());
 
     let mut channel = test_make_channel();
     let bans_string: &[u8] = &String::from("").into_bytes();
     p10_set_channel_bans(&mut channel, bans_string);
-    assert_eq!(channel.bans.len(), 0);
-    assert!(channel.bans.iter().position(|n| n == &format!("*!*@*").into_bytes().to_vec()).is_none());
+    assert_eq!(channel.base.bans.len(), 0);
+    assert!(channel.base.bans.iter().position(|n| n == &format!("*!*@*").into_bytes().to_vec()).is_none());
 }
 
 #[test]
@@ -1256,20 +1262,20 @@ fn test_parses_channel_mode_strings() {
     let mut channel = test_make_channel();
     let mode_string: &[u8] = &String::from("+ntl 34").into_bytes();
     p10_set_channel_modes(&mut channel, mode_string);
-    assert_eq!(channel.modes, CMODE_LIMIT.bits() | CMODE_NOPRIVMSGS.bits() | CMODE_TOPICLIMIT.bits());
-    assert_eq!(channel.limit, 34);
+    assert_eq!(channel.base.modes, CMODE_LIMIT.bits() | CMODE_NOPRIVMSGS.bits() | CMODE_TOPICLIMIT.bits());
+    assert_eq!(channel.base.limit, 34);
 
     let mut channel = test_make_channel();
-    assert_eq!(channel.modes, 0);
+    assert_eq!(channel.base.modes, 0);
     let mode_string: &[u8] = &String::from("+kU THAKEY userpass").into_bytes();
     p10_set_channel_modes(&mut channel, mode_string);
-    assert!(channel.key.is_some());
+    assert!(channel.base.key.is_some());
     assert!(channel.ext.upass.is_some());
-    let key = &channel.key.unwrap();
+    let key = &channel.base.key.unwrap();
     let upass = &channel.ext.upass.unwrap();
     assert_eq!(key, b"THAKEY");
     assert_eq!(upass, b"userpass");
-    assert_eq!(channel.modes, CMODE_KEY.bits() | CMODE_UPASS.bits());
+    assert_eq!(channel.base.modes, CMODE_KEY.bits() | CMODE_UPASS.bits());
 }
 
 #[test]
@@ -1277,83 +1283,83 @@ fn test_adds_channel_mode_bitflags() {
     let mut channel = test_make_channel();
 
     // Private
-    assert!(channel.modes & CMODE_PRIVATE.bits() == 0);
+    assert!(channel.base.modes & CMODE_PRIVATE.bits() == 0);
     p10_add_channel_mode(&mut channel, true, &b'p');
-    assert!(channel.modes & CMODE_PRIVATE.bits() > 0);
+    assert!(channel.base.modes & CMODE_PRIVATE.bits() > 0);
 
     // Secret
-    assert!(channel.modes & CMODE_SECRET.bits() == 0);
+    assert!(channel.base.modes & CMODE_SECRET.bits() == 0);
     p10_add_channel_mode(&mut channel, true, &b's');
-    assert!(channel.modes & CMODE_MODERATED.bits() | CMODE_SECRET.bits() > 0);
+    assert!(channel.base.modes & CMODE_MODERATED.bits() | CMODE_SECRET.bits() > 0);
 
     // Moderated
-    assert!(channel.modes & CMODE_MODERATED.bits() == 0);
+    assert!(channel.base.modes & CMODE_MODERATED.bits() == 0);
     p10_add_channel_mode(&mut channel, true, &b'm');
-    assert!(channel.modes & CMODE_MODERATED.bits() > 0);
+    assert!(channel.base.modes & CMODE_MODERATED.bits() > 0);
 
     // Topic limit
-    assert!(channel.modes & CMODE_TOPICLIMIT.bits() == 0);
+    assert!(channel.base.modes & CMODE_TOPICLIMIT.bits() == 0);
     p10_add_channel_mode(&mut channel, true, &b't');
-    assert!(channel.modes & CMODE_TOPICLIMIT.bits() > 0);
+    assert!(channel.base.modes & CMODE_TOPICLIMIT.bits() > 0);
 
     // Invite only
-    assert!(channel.modes & CMODE_INVITEONLY.bits() == 0);
+    assert!(channel.base.modes & CMODE_INVITEONLY.bits() == 0);
     p10_add_channel_mode(&mut channel, true, &b'i');
-    assert!(channel.modes & CMODE_INVITEONLY.bits() > 0);
+    assert!(channel.base.modes & CMODE_INVITEONLY.bits() > 0);
 
     // No outside private messages
-    assert!(channel.modes & CMODE_NOPRIVMSGS.bits() == 0);
+    assert!(channel.base.modes & CMODE_NOPRIVMSGS.bits() == 0);
     p10_add_channel_mode(&mut channel, true, &b'n');
-    assert!(channel.modes & CMODE_NOPRIVMSGS.bits() > 0);
-    assert!(channel.modes & CMODE_NOPRIVMSGS.bits() & CMODE_LIMIT.bits() == 0);
+    assert!(channel.base.modes & CMODE_NOPRIVMSGS.bits() > 0);
+    assert!(channel.base.modes & CMODE_NOPRIVMSGS.bits() & CMODE_LIMIT.bits() == 0);
 
     // Channel has a key
-    assert!(channel.modes & CMODE_KEY.bits() == 0);
+    assert!(channel.base.modes & CMODE_KEY.bits() == 0);
     p10_add_channel_mode(&mut channel, true, &b'k');
-    assert!(channel.modes & CMODE_KEY.bits() > 0);
+    assert!(channel.base.modes & CMODE_KEY.bits() > 0);
 
     // Ban
-    assert!(channel.modes & CMODE_BAN.bits() == 0);
+    assert!(channel.base.modes & CMODE_BAN.bits() == 0);
     p10_add_channel_mode(&mut channel, true, &b'b');
-    assert!(channel.modes & CMODE_BAN.bits() > 0);
+    assert!(channel.base.modes & CMODE_BAN.bits() > 0);
 
     // Channel has a limit
-    assert!(channel.modes & CMODE_LIMIT.bits() == 0);
+    assert!(channel.base.modes & CMODE_LIMIT.bits() == 0);
     p10_add_channel_mode(&mut channel, true, &b'l');
-    assert!(channel.modes & CMODE_LIMIT.bits() > 0);
+    assert!(channel.base.modes & CMODE_LIMIT.bits() > 0);
 
     // Channel is delayed join
-    assert!(channel.modes & CMODE_DELAYJOINS.bits() == 0);
+    assert!(channel.base.modes & CMODE_DELAYJOINS.bits() == 0);
     p10_add_channel_mode(&mut channel, true, &b'D');
-    assert!(channel.modes & CMODE_DELAYJOINS.bits() > 0);
+    assert!(channel.base.modes & CMODE_DELAYJOINS.bits() > 0);
 
     // Channel is only allowing registered users
-    assert!(channel.modes & CMODE_REGONLY.bits() == 0);
+    assert!(channel.base.modes & CMODE_REGONLY.bits() == 0);
     p10_add_channel_mode(&mut channel, true, &b'r');
-    assert!(channel.modes & CMODE_REGONLY.bits() > 0);
+    assert!(channel.base.modes & CMODE_REGONLY.bits() > 0);
 
     // Channel is blocking color codes
-    assert!(channel.modes & CMODE_NOCOLORS.bits() == 0);
+    assert!(channel.base.modes & CMODE_NOCOLORS.bits() == 0);
     p10_add_channel_mode(&mut channel, true, &b'c');
-    assert!(channel.modes & CMODE_NOCOLORS.bits() > 0);
+    assert!(channel.base.modes & CMODE_NOCOLORS.bits() > 0);
 
     // Channel is blocking CTCPs
-    assert!(channel.modes & CMODE_NOCTCPS.bits() == 0);
+    assert!(channel.base.modes & CMODE_NOCTCPS.bits() == 0);
     p10_add_channel_mode(&mut channel, true, &b'C');
-    assert!(channel.modes & CMODE_NOCTCPS.bits() > 0);
+    assert!(channel.base.modes & CMODE_NOCTCPS.bits() > 0);
 
     // Channel is registered
-    assert!(channel.modes & CMODE_REGISTERED.bits() == 0);
+    assert!(channel.base.modes & CMODE_REGISTERED.bits() == 0);
     p10_add_channel_mode(&mut channel, true, &b'z');
-    assert!(channel.modes & CMODE_REGISTERED.bits() > 0);
+    assert!(channel.base.modes & CMODE_REGISTERED.bits() > 0);
 
     // Channel has an admin password
-    assert!(channel.modes & CMODE_APASS.bits() == 0);
+    assert!(channel.base.modes & CMODE_APASS.bits() == 0);
     p10_add_channel_mode(&mut channel, true, &b'A');
-    assert!(channel.modes & CMODE_APASS.bits() > 0);
+    assert!(channel.base.modes & CMODE_APASS.bits() > 0);
 
     // Channel has a user password
-    assert!(channel.modes & CMODE_UPASS.bits() == 0);
+    assert!(channel.base.modes & CMODE_UPASS.bits() == 0);
     p10_add_channel_mode(&mut channel, true, &b'U');
-    assert!(channel.modes & CMODE_UPASS.bits() > 0);
+    assert!(channel.base.modes & CMODE_UPASS.bits() > 0);
 }

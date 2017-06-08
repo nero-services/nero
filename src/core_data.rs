@@ -9,8 +9,32 @@ use net::ConnectionState;
 use plugin::{Bot, IrcEvent};
 use protocol::Protocol;
 use plugin_handler::LoadedPlugin;
-use user::User;
+use user::{BaseUser, User};
 use server::Server;
+
+pub trait PluginApi {
+    fn get_user_by_nick(&self, nick: &[u8]) -> Option<BaseUser>;
+    fn get_user_by_numeric(&self, numeric: &[u8]) -> Option<BaseUser>;
+    // fn add_to_buffer(data: &[u8]);
+}
+
+impl<P: Protocol> PluginApi for NeroData<P> {
+    fn get_user_by_nick(&self, nick: &[u8]) -> Option<BaseUser> {
+        for user in &self.users {
+            let borrowed_user = user.borrow();
+            if borrowed_user.base.nick == nick.to_vec() {
+                return Some(borrowed_user.base.clone());
+            }
+        }
+
+        None
+    }
+
+    fn get_user_by_numeric(&self, nick: &[u8]) -> Option<BaseUser> {
+        let proto = &self.protocol;
+        proto.find_user_by_numeric(&self.users, nick)
+    }
+}
 
 #[derive(Debug)]
 pub struct NeroData<P: Protocol> {
@@ -25,6 +49,7 @@ pub struct NeroData<P: Protocol> {
     pub events: Vec<IrcEvent>,
     pub config: Config,
     pub write_buffer: Vec<Vec<u8>>,
+    pub protocol: P,
 }
 
 impl<P: Protocol> NeroData<P> {
@@ -41,6 +66,7 @@ impl<P: Protocol> NeroData<P> {
             config: config,
             bots: Vec::new(),
             write_buffer: Vec::new(),
+            protocol: P::new(),
         }
     }
 
@@ -85,12 +111,19 @@ impl<P: Protocol> NeroData<P> {
 
     pub fn fire_hook(&mut self, hook: String, origin: &[u8], argc: usize, argv: Vec<Vec<u8>>) {
         use std::ptr;
+        use std::mem;
 
-        for mut event in &mut self.events {
+        let mut events = mem::replace(&mut self.events, Vec::new());
+        let mut plugins = mem::replace(&mut self.plugins, Vec::new());
+
+        for mut event in &mut events {
             if event.name == hook {
-                let mut plugin = self.plugins.iter_mut().filter(|x| ptr::eq(&***x, event.plugin_ptr)).next().unwrap();
-                let _res = (event.f.0)(&mut **plugin, origin, argc, &argv);
+                let mut plugin = plugins.iter_mut().filter(|x| ptr::eq(&***x, event.plugin_ptr)).next().unwrap();
+                let _res = (event.f.0)(self, &mut **plugin, origin, argc, &argv);
             }
         }
+
+        self.events = events;
+        self.plugins = plugins;
     }
 }

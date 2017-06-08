@@ -5,7 +5,7 @@ use channel_member::ChannelMember;
 use protocol::{Protocol, ChanExtDefault};
 
 #[derive(Debug)]
-pub struct Channel<P: Protocol> {
+pub struct BaseChannel {
     pub name: Vec<u8>,
     pub topic: Vec<u8>,
     pub topic_nick: Vec<u8>,
@@ -15,11 +15,16 @@ pub struct Channel<P: Protocol> {
     pub limit: u64,
     pub key: Option<Vec<u8>>,
     pub bans: Vec<Vec<u8>>,
+}
+
+#[derive(Debug)]
+pub struct Channel<P: Protocol> {
+    pub base: BaseChannel,
     pub members: Vec<Rc<RefCell<ChannelMember<P>>>>,
     pub ext: P::ChanExt,
 }
 
-impl<P> Channel<P> where P: Protocol {
+impl BaseChannel {
     pub fn new(name: &[u8], created: u64) -> Self {
         Self {
             name: name.to_vec().clone(),
@@ -31,6 +36,15 @@ impl<P> Channel<P> where P: Protocol {
             limit: 0,
             key: None,
             bans: Vec::new(),
+        }
+    }
+}
+
+impl<P> Channel<P> where P: Protocol {
+    pub fn new(name: &[u8], created: u64) -> Self {
+        let base = BaseChannel::new(name, created);
+        Self {
+            base: base,
             members: Vec::new(),
             ext: P::ChanExt::new(),
         }
