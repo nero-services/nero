@@ -140,3 +140,11 @@ fn test_u8_slice_to_lower() {
     assert_eq!(lowered.len(), 19);
     assert_eq!(lowered, b"this is in all caps");
 }
+
+#[test]
+fn test_trim_bytes_right() {
+    let mystr: &[u8] = &String::from("This has newlines and a carriage return\r\n").into_bytes();
+    let clean = trim_bytes_right(mystr);
+    assert_eq!(clean.len(), 39);
+    assert_eq!(clean[38], b'n');
+}
