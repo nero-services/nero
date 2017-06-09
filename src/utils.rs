@@ -85,6 +85,32 @@ pub fn ceiling_division(left: usize, right: usize) -> usize {
     1 + ((left - 1) / right)
 }
 
+// 64*64*1    64*1     1*2
+// #define NUMNICKLOG 6
+// #define NUMNICKBASE (1 << NUMNICKLOG)
+// #define NUMNICKMASK (NUMNICKBASE - 1)
+pub fn inttobase64(mut v: usize, count: usize) -> String {
+    static CONVERT2Y: &'static [u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789[]";
+
+    let mut buf: Vec<u8> = Vec::new();
+    for _ in 0..count {
+        buf.push(CONVERT2Y[v & ((1 << 6) - 1)]);
+        v >>= 6;
+    }
+
+    buf.reverse();
+    String::from_utf8(buf).unwrap()
+}
+
+#[test]
+fn test_inttobase64() {
+    assert_eq!(&inttobase64(16, 3), "AAQ");
+    assert_eq!(&inttobase64(80, 3), "ABQ");
+    assert_eq!(&inttobase64(4176, 3), "BBQ");
+    assert_eq!(&inttobase64(21399, 3), "FOX");
+    assert_eq!(&inttobase64(91397, 3), "WUF");
+}
+
 #[test]
 fn test_ceiling_division() {
     assert_eq!(ceiling_division(499, 500), 1);
