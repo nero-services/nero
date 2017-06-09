@@ -12,10 +12,15 @@ use plugin_handler::LoadedPlugin;
 use user::{BaseUser, User};
 use server::Server;
 
+pub trait Target {
+    fn get_target(&self) -> Vec<u8>;
+}
+
 pub trait PluginApi {
     fn get_user_by_nick(&self, nick: &[u8]) -> Option<BaseUser>;
     fn get_user_by_numeric(&self, numeric: &[u8]) -> Option<BaseUser>;
-    // fn add_to_buffer(data: &[u8]);
+    fn send_privmsg(&mut self, source: &BaseUser, target: &Target, message: &[u8]);
+    fn send_privmsg_raw_target(&mut self, source: &BaseUser, target: &[u8], message: &[u8]);
 }
 
 impl<P: Protocol> PluginApi for NeroData<P> {
@@ -33,6 +38,19 @@ impl<P: Protocol> PluginApi for NeroData<P> {
     fn get_user_by_numeric(&self, nick: &[u8]) -> Option<BaseUser> {
         let proto = &self.protocol;
         proto.find_user_by_numeric(&self.users, nick)
+    }
+
+    fn send_privmsg(&mut self, source: &BaseUser, target: &Target, message: &[u8]) {
+        let target_name = target.get_target();
+        let proto = &self.protocol;
+        let users = &self.users;
+        proto.send_privmsg(users, &mut self.write_buffer, &source, &target_name, message);
+    }
+
+    fn send_privmsg_raw_target(&mut self, source: &BaseUser, target: &[u8], message: &[u8]) {
+        let proto = &self.protocol;
+        let users = &self.users;
+        proto.send_privmsg(users, &mut self.write_buffer, &source, target, message);
     }
 }
 

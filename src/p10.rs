@@ -10,7 +10,7 @@ use logger::log;
 use logger::LogLevel::*;
 use protocol::{Protocol, ChanExtDefault, MemberExtDefault, ServExtDefault, UserExtDefault};
 use user::{BaseUser, User};
-use utils::{epoch_int, dv, split_string, unsplit_string, u8_slice_to_lower};
+use utils::{epoch_int, dv, split_string, unsplit_string, u8_slice_to_lower, ceiling_division, inttobase64};
 use server::Server;
 
 #[derive(Debug, Copy, Clone)]
@@ -56,6 +56,7 @@ pub struct P10ServExt {
     pub numeric: Vec<u8>,
     pub glines: Vec<Gline>,
     pub self_burst: bool,
+    pub numeric_accum: u64,
 }
 
 impl Gline {
@@ -123,6 +124,7 @@ impl ServExtDefault for P10ServExt {
             numeric: Vec::new(),
             glines: Vec::new(),
             self_burst: true,
+            numeric_accum: 0,
         }
     }
 }
@@ -267,6 +269,20 @@ impl Protocol for P10 {
         }
 
         None
+    }
+
+    fn send_privmsg(&self, users: &Vec<Rc<RefCell<User<P10>>>>, write_buffer: &mut Vec<Vec<u8>>, source: &BaseUser, target: &[u8], message: &[u8]) {
+        if let Some(u) = find_user_nick(users, &source.nick) {
+            let borrowed = u.borrow();
+            let numeric = borrowed.ext.numeric.clone();
+
+            if numeric.len() <= 0 {
+                panic!("No numeric specified in source user {}", dv(&source.nick));
+            }
+
+            p10_irc_privmsg(write_buffer, &numeric, target, message);
+        }
+
     }
 }
 
@@ -923,6 +939,30 @@ fn find_user_numeric<'a>(core_data: &'a NeroData<P10>, numeric: &Vec<u8>) -> Opt
     None
 }
 
+fn find_user_nick(users: &Vec<Rc<RefCell<User<P10>>>>, nick: &Vec<u8>) -> Option<Rc<RefCell<User<P10>>>> {
+    for user in users {
+        if &user.borrow().base.nick == nick {
+            return Some(user.clone())
+        }
+    }
+
+    None
+}
+
+fn get_next_numeric(core_data: &mut NeroData<P10>) -> String {
+    let numeric_optional = core_data.config.uplink.numeric.clone();
+    let numeric = numeric_optional.unwrap();
+
+    let uplink_optional = core_data.uplink.clone();
+    let uplink = uplink_optional.unwrap();
+    let mut uplink_mut = uplink.borrow_mut();
+    let new_numeric = inttobase64(uplink_mut.ext.numeric_accum as usize, 3);
+
+    uplink_mut.ext.numeric_accum+=1;
+
+    format!("{}{}", numeric, new_numeric)
+}
+
 fn burst_our_users(core_data: &mut NeroData<P10>) {
     let uplink_optional = core_data.uplink.clone();
     let uplink = uplink_optional.unwrap().clone();
@@ -936,6 +976,9 @@ fn burst_our_users(core_data: &mut NeroData<P10>) {
     }
 
     for mut user in local_users {
+        let numeric = get_next_numeric(core_data);
+        user.ext.numeric = numeric.into_bytes();
+
         p10_set_user_modes(&mut user, "+iok".as_bytes());
 
         p10_irc_user(core_data, &user);
@@ -951,9 +994,9 @@ fn p10_irc_user(core_data: &mut NeroData<P10>, user: &User<P10>) {
     let numeric = numeric_optional.unwrap();
     let now = core_data.now;
 
-    core_data.add_to_buffer(&format!("{} N {} 1 {} {} {} +iok _ {}AAA :{}",
+    core_data.add_to_buffer(&format!("{} N {} 1 {} {} {} +iok _ {} :{}",
         numeric, dv(&user.base.nick), now, dv(&user.base.ident),
-        dv(&user.base.host), numeric, dv(&user.base.gecos)).into_bytes());
+        dv(&user.base.host), dv(&user.ext.numeric), dv(&user.base.gecos)).into_bytes());
 }
 
 fn p10_irc_eob(core_data: &NeroData<P10>) -> Vec<u8> {
@@ -975,6 +1018,23 @@ fn p10_irc_pong_asll(core_data: &NeroData<P10>, who: &[u8], orig_ts: &[u8]) -> V
     let numeric = numeric_optional.unwrap();
 
     format!("{} Z {} {} 0 {}", numeric, dv(&who), dv(&orig_ts), dv(&orig_ts)).into_bytes()
+}
+
+fn p10_irc_privmsg(buffer: &mut Vec<Vec<u8>>, source: &[u8], target: &[u8], message: &[u8]) {
+    let prefix = format!("{} P {} :", dv(&source), dv(&target));
+    let message_count = ceiling_division(message.len() + prefix.len(), 500);
+
+    for ii in 0..message_count {
+        let begin = ii * 500;
+        let end = if (ii + 1) * 500 > message.len() {
+            message.len() + (ii * 500)
+        } else {
+            (ii + 1) * 500
+        };
+
+        buffer.push(format!("{}{}", prefix, dv(&message[begin..end])).into());
+    }
+
 }
 
 // murder this

@@ -14,7 +14,8 @@ pub trait Protocol: Sized + Send + Sync + 'static {
     fn new() -> Self;
     fn start_handshake(&mut self, me: &mut NeroData<Self>);
     fn process(&self, message: &[u8], me: &mut NeroData<Self>);
-    fn find_user_by_numeric(&self, core_data: &Vec<Rc<RefCell<User<Self>>>>, numeric: &[u8]) -> Option<BaseUser>;
+    fn find_user_by_numeric(&self, users: &Vec<Rc<RefCell<User<Self>>>>, numeric: &[u8]) -> Option<BaseUser>;
+    fn send_privmsg(&self, users: &Vec<Rc<RefCell<User<Self>>>>, write_buffer: &mut Vec<Vec<u8>>, source: &BaseUser, target: &[u8], message: &[u8]);
 }
 
 pub trait ChanExtDefault {

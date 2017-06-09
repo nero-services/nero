@@ -2,6 +2,7 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use channel::Channel;
+use core_data::Target;
 use protocol::Protocol;
 use protocol::UserExtDefault;
 use server::Server;
@@ -38,6 +39,12 @@ impl BaseUser {
             account: Vec::new(),
             away_message: Vec::new(),
         }
+    }
+}
+
+impl Target for BaseUser {
+    fn get_target(&self) -> Vec<u8> {
+        return self.nick.to_vec().clone();
     }
 }
 
