@@ -79,6 +79,19 @@ pub fn trim_bytes_right(mut input: &[u8]) -> &[u8] {
     input
 }
 
+pub fn ceiling_division(left: usize, right: usize) -> usize {
+    assert!(left > 0);
+
+    1 + ((left - 1) / right)
+}
+
+#[test]
+fn test_ceiling_division() {
+    assert_eq!(ceiling_division(499, 500), 1);
+    assert_eq!(ceiling_division(500, 500), 1);
+    assert_eq!(ceiling_division(501, 500), 2);
+}
+
 #[test]
 fn test_unsplit_string() {
     let my_argv: Vec<Vec<u8>> = vec![
