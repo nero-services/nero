@@ -6,8 +6,10 @@ use net::ConnectionState;
 
 use channel::Channel;
 use channel_member::ChannelMember;
+use config::Config;
 use logger::log;
 use logger::LogLevel::*;
+use plugin::Bot;
 use protocol::{Protocol, ChanExtDefault, MemberExtDefault, ServExtDefault, UserExtDefault};
 use user::{BaseUser, User};
 use utils::{epoch_int, dv, split_string, unsplit_string, u8_slice_to_lower, ceiling_division, inttobase64};
@@ -170,6 +172,12 @@ impl Protocol for P10 {
         }
     }
 
+    fn setup(&self, me: &mut RefMut<Server<Self>>, config: &Config) {
+        if me.ext.numeric.len() == 0 {
+            me.ext.numeric = config.uplink.numeric.clone().unwrap().into_bytes();
+        }
+    }
+
     fn start_handshake(&mut self, core_data: &mut NeroData<Self>) {
         if core_data.state == ConnectionState::Connecting {
             core_data.state = ConnectionState::Bursting;
@@ -271,6 +279,22 @@ impl Protocol for P10 {
         None
     }
 
+    fn add_local_bot(&self, core_data: &mut NeroData<P10>, bot: &Bot) {
+        let mut user_node: User<P10> = User::<P10>::new(&bot.nick.as_bytes(), &bot.ident.as_bytes(), &bot.hostname.as_bytes(), core_data.me.clone());
+        user_node.base.ip = "255.255.255.255".into();
+        user_node.base.gecos = bot.gecos.as_bytes().to_vec();
+
+        let numeric = get_next_numeric(core_data);
+        user_node.ext.numeric = numeric.into_bytes();
+        p10_set_user_modes(&mut user_node, "+iok".as_bytes());
+
+        let shared_user = Rc::new(RefCell::new(user_node));
+
+        let mut me_borrow = core_data.me.borrow_mut();
+        me_borrow.users.push(shared_user.clone());
+        core_data.users.push(shared_user.clone());
+    }
+
     fn send_privmsg(&self, users: &Vec<Rc<RefCell<User<P10>>>>, write_buffer: &mut Vec<Vec<u8>>, source: &BaseUser, target: &[u8], message: &[u8]) {
         if let Some(u) = find_user_nick(users, &source.nick) {
             let borrowed = u.borrow();
@@ -282,7 +306,6 @@ impl Protocol for P10 {
 
             p10_irc_privmsg(write_buffer, &numeric, target, message);
         }
-
     }
 }
 
@@ -950,51 +973,30 @@ fn find_user_nick(users: &Vec<Rc<RefCell<User<P10>>>>, nick: &Vec<u8>) -> Option
 }
 
 fn get_next_numeric(core_data: &mut NeroData<P10>) -> String {
-    let numeric_optional = core_data.config.uplink.numeric.clone();
-    let numeric = numeric_optional.unwrap();
+    let local_numeric = String::from_utf8(core_data.me.borrow().ext.numeric.clone()).unwrap();
+    let mut uplink = core_data.me.borrow_mut();
 
-    let uplink_optional = core_data.uplink.clone();
-    let uplink = uplink_optional.unwrap();
-    let mut uplink_mut = uplink.borrow_mut();
-    let new_numeric = inttobase64(uplink_mut.ext.numeric_accum as usize, 3);
+    assert!(local_numeric.len() > 0);
 
-    uplink_mut.ext.numeric_accum+=1;
+    let numnick = inttobase64(uplink.ext.numeric_accum as usize, 3);
 
-    format!("{}{}", numeric, new_numeric)
+    uplink.ext.numeric_accum += 1;
+    format!("{}{}", local_numeric, numnick)
 }
 
 fn burst_our_users(core_data: &mut NeroData<P10>) {
-    let uplink_optional = core_data.uplink.clone();
-    let uplink = uplink_optional.unwrap().clone();
-    let mut local_users = Vec::new();
-
-    for bot in &core_data.bots {
-        let mut user_node: User<P10> = User::<P10>::new(&bot.nick.as_bytes(), &bot.ident.as_bytes(), &bot.hostname.as_bytes(), uplink.clone());
-        user_node.base.ip = "255.255.255.255".into();
-        user_node.base.gecos = bot.gecos.as_bytes().to_vec();
-        local_users.push(user_node);
-    }
-
-    for mut user in local_users {
-        let numeric = get_next_numeric(core_data);
-        user.ext.numeric = numeric.into_bytes();
-
-        p10_set_user_modes(&mut user, "+iok".as_bytes());
-
-        p10_irc_user(core_data, &user);
-        let shared_user = Rc::new(RefCell::new(user));
-        uplink.borrow_mut().users.push(shared_user.clone());
-        core_data.users.push(shared_user.clone());
-    }
-}
-
-// IRC Command builders
-fn p10_irc_user(core_data: &mut NeroData<P10>, user: &User<P10>) {
     let numeric_optional = core_data.config.uplink.numeric.clone();
     let numeric = numeric_optional.unwrap();
     let now = core_data.now;
 
-    core_data.add_to_buffer(&format!("{} N {} 1 {} {} {} +iok _ {} :{}",
+    for user in &core_data.me.borrow().users {
+        p10_irc_user(&numeric, now, &*user.borrow(), &mut core_data.write_buffer);
+    }
+}
+
+// IRC Command builders
+fn p10_irc_user(numeric: &str, now: u64, user: &User<P10>, buffer: &mut Vec<Vec<u8>>) {
+    buffer.push(format!("{} N {} 1 {} {} {} +iok _ {} :{}",
         numeric, dv(&user.base.nick), now, dv(&user.base.ident),
         dv(&user.base.host), dv(&user.ext.numeric), dv(&user.base.gecos)).into_bytes());
 }

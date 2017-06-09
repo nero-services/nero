@@ -118,6 +118,7 @@ pub fn boot<P: Protocol>(handle: Handle) -> Box<Future<Item=(), Error=io::Error>
     let mut net_state = NetState::<P>::new(config_data);
     let addr = format!("{}:{}", net_state.core_data.config.uplink.ip, net_state.core_data.config.uplink.port).parse().unwrap();
 
+    net_state.core_data.setup();
     net_state.core_data.load_plugins();
 
     Box::new(TcpStream::connect(&addr, &handle).and_then(|stream| {

@@ -6,7 +6,7 @@ use config::Config;
 use logger::log;
 use logger::LogLevel::*;
 use net::ConnectionState;
-use plugin::{Bot, IrcEvent};
+use plugin::IrcEvent;
 use protocol::Protocol;
 use plugin_handler::LoadedPlugin;
 use user::{BaseUser, User};
@@ -59,11 +59,11 @@ pub struct NeroData<P: Protocol> {
     pub state: ConnectionState,
     pub now: u64,
     pub uplink: Option<Rc<RefCell<Server<P>>>>,
+    pub me: Rc<RefCell<Server<P>>>,
     pub channels: Vec<Rc<RefCell<Channel<P>>>>,
     pub servers: Vec<Rc<RefCell<Server<P>>>>,
     pub users: Vec<Rc<RefCell<User<P>>>>,
     pub plugins: Vec<LoadedPlugin>,
-    pub bots: Vec<Bot>,
     pub events: Vec<IrcEvent>,
     pub config: Config,
     pub write_buffer: Vec<Vec<u8>>,
@@ -72,17 +72,20 @@ pub struct NeroData<P: Protocol> {
 
 impl<P: Protocol> NeroData<P> {
     pub fn new(config: Config) -> Self {
+        let my_hostname = config.uplink.hostname.clone().into_bytes();
+        let my_description = config.uplink.description.clone().into_bytes();
+
         Self {
             state: ConnectionState::Connecting,
             now: 0,
             uplink: None,
+            me: Rc::new(RefCell::new(Server::<P>::new(&my_hostname, &my_description))),
             channels: Vec::new(),
             servers: Vec::new(),
             users: Vec::new(),
             plugins: Vec::new(),
             events: Vec::new(),
             config: config,
-            bots: Vec::new(),
             write_buffer: Vec::new(),
             protocol: P::new(),
         }
@@ -90,6 +93,12 @@ impl<P: Protocol> NeroData<P> {
 
     pub fn add_to_buffer(&mut self, data: &[u8]) {
         self.write_buffer.push(data.into());
+    }
+
+    pub fn setup(&mut self) {
+        let config = &self.config;
+        let mut me_borrow = self.me.borrow_mut();
+        self.protocol.setup(&mut me_borrow, config);
     }
 
     pub fn load_plugins(&mut self) {
@@ -109,7 +118,9 @@ impl<P: Protocol> NeroData<P> {
 
                         if let Some(bots) = plugin.register_bots() {
                             for bot in bots {
-                                self.bots.push(bot);
+                                let protocol = ::std::mem::replace(&mut self.protocol, P::new());
+                                protocol.add_local_bot(self, &bot);
+                                self.protocol = protocol;
                             }
                         }
 
