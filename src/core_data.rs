@@ -8,6 +8,7 @@ use logger::LogLevel::*;
 use net::ConnectionState;
 use plugin::IrcEvent;
 use protocol::Protocol;
+use plugin::HookData;
 use plugin_handler::LoadedPlugin;
 use user::{BaseUser, User};
 use server::Server;
@@ -61,6 +62,7 @@ pub struct NeroData<P: Protocol> {
     pub uplink: Option<Rc<RefCell<Server<P>>>>,
     pub me: Rc<RefCell<Server<P>>>,
     pub channels: Vec<Rc<RefCell<Channel<P>>>>,
+    pub unbursted_channels: Vec<Vec<u8>>,
     pub servers: Vec<Rc<RefCell<Server<P>>>>,
     pub users: Vec<Rc<RefCell<User<P>>>>,
     pub plugins: Vec<LoadedPlugin>,
@@ -81,6 +83,7 @@ impl<P: Protocol> NeroData<P> {
             uplink: None,
             me: Rc::new(RefCell::new(Server::<P>::new(&my_hostname, &my_description))),
             channels: Vec::new(),
+            unbursted_channels: Vec::new(),
             servers: Vec::new(),
             users: Vec::new(),
             plugins: Vec::new(),
@@ -138,7 +141,7 @@ impl<P: Protocol> NeroData<P> {
         }
     }
 
-    pub fn fire_hook(&mut self, hook: String, origin: &[u8], argc: usize, argv: Vec<Vec<u8>>) {
+    pub fn fire_hook(&mut self, hook: String, hook_data: &HookData) {
         use std::ptr;
         use std::mem;
 
@@ -148,7 +151,7 @@ impl<P: Protocol> NeroData<P> {
         for mut event in &mut events {
             if event.name == hook {
                 let mut plugin = plugins.iter_mut().filter(|x| ptr::eq(&***x, event.plugin_ptr)).next().unwrap();
-                let _res = (event.f.0)(self, &mut **plugin, origin, argc, &argv);
+                let _res = (event.f.0)(self, &mut **plugin, hook_data);
             }
         }
 

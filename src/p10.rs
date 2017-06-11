@@ -285,14 +285,33 @@ impl Protocol for P10 {
         user_node.base.gecos = bot.gecos.as_bytes().to_vec();
 
         let numeric = get_next_numeric(core_data);
-        user_node.ext.numeric = numeric.into_bytes();
+        user_node.ext.numeric = numeric.clone().into_bytes();
         p10_set_user_modes(&mut user_node, "+iok".as_bytes());
 
-        let shared_user = Rc::new(RefCell::new(user_node));
+        {
+            let shared_user = Rc::new(RefCell::new(user_node));
+            let mut me_borrow = core_data.me.borrow_mut();
+            me_borrow.users.push(shared_user.clone());
+            core_data.users.push(shared_user.clone());
+        }
 
-        let mut me_borrow = core_data.me.borrow_mut();
-        me_borrow.users.push(shared_user.clone());
-        core_data.users.push(shared_user.clone());
+        for channel in &bot.channels {
+            let timestamp = core_data.now;
+            let name = channel.name.clone().into_bytes();
+            let modes = channel.chanmodes.clone().into_bytes();
+            let mut new_channel = p10_add_channel(core_data, &name, timestamp, &modes, &String::new().into_bytes()).unwrap();
+            let member_b = p10_add_channel_member(core_data, &mut new_channel, &numeric.clone().into_bytes()).unwrap();
+            let mut member = member_b.borrow_mut();
+
+            for mode in channel.umodes.chars() {
+                match mode {
+                    'o' => member.base.modes |= MMODE_CHANOP.bits(),
+                    'v' => member.base.modes |= MMODE_VOICE.bits(),
+                    _ => {},
+                }
+            }
+        }
+
     }
 
     fn send_privmsg(&self, users: &Vec<Rc<RefCell<User<P10>>>>, write_buffer: &mut Vec<Vec<u8>>, source: &BaseUser, target: &[u8], message: &[u8]) {
@@ -358,7 +377,7 @@ fn p10_cmd_server(core_data: &mut NeroData<P10>, origin: &[u8], argc: usize, arg
 
     if core_data.uplink.is_none() {
         core_data.uplink = Some(shared_server.clone());
-        burst_our_users(core_data);
+        p10_burst_our_users(core_data);
     } else {
         let uplink = find_server_numeric(core_data, origin);
         match uplink {
@@ -496,6 +515,11 @@ fn p10_cmd_b(core_data: &mut NeroData<P10>, argc: usize, argv: &[Vec<u8>]) -> Re
         }
     }
 
+    if core_data.unbursted_channels.contains(&argv[1]) {
+        let channel = find_channel(core_data, &argv[1]).unwrap();
+        p10_burst_our_channel(core_data, created_time, &channel);
+    }
+
     let mut channel = match p10_add_channel(core_data, &argv[1], created_time, &mode_list, &ban_list) {
         Some(channel) => channel,
         None => return Err(()),
@@ -561,6 +585,9 @@ fn p10_cmd_b(core_data: &mut NeroData<P10>, argc: usize, argv: &[Vec<u8>]) -> Re
 
 // AB N SightBlind 1 1496365558 kvirc 127.0.0.1 +owgrh blindsight kvirc@blindsight.users.gamesurge B]AAAB ABAAB :KVIrc 4.9.2 Aria http://kvirc.net/
 fn p10_cmd_n(core_data: &mut NeroData<P10>, origin: &[u8], argc: usize, argv: &[Vec<u8>]) -> Result<(), ()> {
+    use plugin::HookType::*;
+    use plugin::HookData;
+
     let option_user = find_user_numeric(core_data, &origin.to_vec()).map(|x| x.clone());
     // println!("Looking for nick, argc={}, origin={}", argc, dv(origin));
     if option_user.is_some() {
@@ -590,7 +617,12 @@ fn p10_cmd_n(core_data: &mut NeroData<P10>, origin: &[u8], argc: usize, argv: &[
             Ok(user_rc) => {
                 let user = user_rc.borrow();
                 log(Debug, "MAIN", format!("User {} connecting from {}", dv(&user.base.nick), dv(&user.uplink.borrow().base.hostname)));
-                core_data.fire_hook("on_connect".into(), origin, argc, argv.to_vec());
+
+                let mut hook_data = HookData::new(UserConnected);
+                hook_data.user = Some(user.base.clone());
+                hook_data.server = Some(user.uplink.borrow().base.clone());
+
+                core_data.fire_hook("on_connect".into(), &hook_data);
             },
             Err(_) => {
                 return Err(());
@@ -930,12 +962,12 @@ fn p10_set_user_mode_helper(user: &mut User<P10>, adding: bool, flag: u64) {
 }
 
 
-fn find_channel<'a>(core_data: &'a NeroData<P10>, name: &[u8]) -> Option<&'a Rc<RefCell<Channel<P10>>>> {
+fn find_channel(core_data: &NeroData<P10>, name: &[u8]) -> Option<Rc<RefCell<Channel<P10>>>> {
     let lower: &[u8] = &u8_slice_to_lower(name);
 
     for channel in &core_data.channels {
         if &channel.borrow().base.name as &[u8] == lower {
-            return Some(channel);
+            return Some(channel.clone());
         }
     }
 
@@ -984,13 +1016,145 @@ fn get_next_numeric(core_data: &mut NeroData<P10>) -> String {
     format!("{}{}", local_numeric, numnick)
 }
 
-fn burst_our_users(core_data: &mut NeroData<P10>) {
+fn p10_build_channel_mode_string(modes: u64, limit: u64, key_option: &Option<Vec<u8>>, ext: &P10ChannelExt) -> String {
+    static P10_CHANNEL_MODES: &'static [u8] = b"psmtinkblDrcCzAu";
+    let mut buf: Vec<u8> = Vec::new();
+
+    for ii in 0..15 {
+        if modes & (1 << ii) > 0 {
+            buf.push(P10_CHANNEL_MODES[ii]);
+        }
+    }
+
+    let mut buf = String::from_utf8(buf).unwrap();
+
+    if limit > 0 {
+        assert!(modes & CMODE_LIMIT.bits() > 0);
+        buf = format!("{} {}", buf, limit);
+    }
+
+    if let Some(ref key) = *key_option {
+        assert!(modes & CMODE_KEY.bits() > 0);
+        buf = format!("{} {}", buf, dv(&key));
+    }
+
+    if let Some(ref upass) = ext.upass {
+        assert!(modes & CMODE_UPASS.bits() > 0);
+        buf = format!("{} {}", buf, dv(&upass));
+    }
+
+    if let Some(ref apass) = ext.apass {
+        assert!(modes & CMODE_APASS.bits() > 0);
+        buf = format!("{} {}", buf, dv(&apass));
+    }
+
+    buf
+}
+
+fn p10_burst_our_channel(core_data: &mut NeroData<P10>, created: u64, channel_rc: &Rc<RefCell<Channel<P10>>>) {
+    let channel = channel_rc.borrow();
+    let local_numeric = String::from_utf8(core_data.me.borrow().ext.numeric.clone()).unwrap();
+
+    let base_burst = format!("{} B {} {} ", local_numeric, dv(&channel.base.name), created);
+    let chan_modes = p10_build_channel_mode_string(channel.base.modes, channel.base.limit, &channel.base.key, &channel.ext);
+    let mut burst_message = base_burst.clone() + "+" + &chan_modes + " ";
+
+    let mut was_opped = false;
+    let mut was_voiced = false;
+
+    for member_rc in &channel.members {
+        let member = &member_rc.borrow();
+        let user = &member.user.borrow();
+
+        log(Debug, "MAIN", format!("Adding local member {} to channel {}", dv(&user.base.nick), dv(&channel.base.name)));
+        let mut need_colon = false;
+        let mut oplen = 0;
+
+        if member.base.modes & MMODE_CHANOP.bits() > 0 && ! was_opped {
+            need_colon = true;
+            was_opped = true;
+            oplen +=1;
+        }
+
+        if member.base.modes & MMODE_VOICE.bits() > 0 && ! was_voiced {
+            need_colon = true;
+            was_voiced = true;
+            oplen +=1;
+        }
+
+        if member.base.modes & MMODE_CHANOP.bits() == 0 && was_opped {
+            need_colon = true;
+            was_opped = false;
+        }
+
+        if member.base.modes & MMODE_VOICE.bits() == 0 && was_voiced {
+            need_colon = true;
+            was_voiced = false;
+        }
+
+        if need_colon {
+            oplen +=1;
+        }
+
+        if burst_message.len() + user.ext.numeric.len() + oplen + 1 >= 500 {
+            core_data.write_buffer.push(burst_message.into_bytes());
+            burst_message = base_burst.clone();
+        }
+
+        burst_message = format!("{}{}", burst_message, dv(&user.ext.numeric));
+        if need_colon {
+            burst_message += ":";
+            if member.base.modes & MMODE_CHANOP.bits() > 0 {
+                burst_message += "o";
+            }
+
+            if member.base.modes & MMODE_VOICE.bits() > 0 {
+                burst_message += "v";
+            }
+        }
+
+        burst_message += ",";
+    }
+
+    burst_message.pop();
+
+    let mut first_ban = false;
+    for ban in &channel.base.bans {
+        if burst_message.len() + ban.len() + 2 >= 500 {
+            core_data.write_buffer.push(burst_message.into_bytes());
+            burst_message = base_burst.clone();
+            first_ban = true;
+        }
+        if first_ban {
+            burst_message += ":%";
+        }
+
+        burst_message = format!("{} ", dv(&ban));
+        first_ban = false;
+    }
+
+    if burst_message.len() != base_burst.len() {
+        core_data.write_buffer.push(burst_message.into_bytes());
+    }
+}
+
+fn p10_burst_our_users(core_data: &mut NeroData<P10>) {
     let numeric_optional = core_data.config.uplink.numeric.clone();
     let numeric = numeric_optional.unwrap();
     let now = core_data.now;
 
     for user in &core_data.me.borrow().users {
         p10_irc_user(&numeric, now, &*user.borrow(), &mut core_data.write_buffer);
+    }
+
+    for channel in &core_data.channels {
+        let lowered_name = u8_slice_to_lower(&channel.borrow().base.name.clone());
+
+        if core_data.unbursted_channels.contains(&lowered_name) {
+            continue;
+        }
+
+        core_data.unbursted_channels.push(lowered_name);
     }
 }
 

@@ -5,7 +5,7 @@ use user::User;
 use protocol::Protocol;
 use protocol::ServExtDefault;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct BaseServer {
     pub hostname: Vec<u8>,
     pub description: Vec<u8>,
