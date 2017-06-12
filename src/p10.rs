@@ -622,7 +622,7 @@ fn p10_cmd_n(core_data: &mut NeroData<P10>, origin: &[u8], argc: usize, argv: &[
                 hook_data.user = Some(user.base.clone());
                 hook_data.server = Some(user.uplink.borrow().base.clone());
 
-                core_data.fire_hook("on_connect".into(), &hook_data);
+                core_data.fire_hook(UserConnected, &hook_data);
             },
             Err(_) => {
                 return Err(());

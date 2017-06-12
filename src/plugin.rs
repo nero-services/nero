@@ -12,9 +12,13 @@ pub type HookFunc = Box<FnMut(&mut PluginApi, &mut Plugin, &HookData) -> Result<
 pub struct HookFuncWrapper(pub HookFunc);
 pub const MAGIC: &'static str = "COOKIES";
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum HookType {
     UserConnected,
+    UserQuit,
+    ServerBursting,
+    ServerEndOfBurst,
+    ServerSplit,
     PrivmsgChan,
     PrivmsgBot,
 }
