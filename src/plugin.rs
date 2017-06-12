@@ -1,5 +1,5 @@
 use std::any::TypeId;
-use core_data::PluginApi;
+use core_data::Target;
 
 use channel::BaseChannel;
 use server::BaseServer;
@@ -76,8 +76,15 @@ impl ::std::fmt::Debug for HookFuncWrapper {
 #[derive(Debug)]
 pub struct IrcEvent {
     pub plugin_ptr: *const Plugin,
-    pub name: String,
+    pub event_type: HookType,
     pub f: HookFuncWrapper,
+}
+
+pub trait PluginApi {
+    fn get_user_by_nick(&self, nick: &[u8]) -> Option<BaseUser>;
+    fn get_user_by_numeric(&self, numeric: &[u8]) -> Option<BaseUser>;
+    fn send_privmsg(&mut self, source: &BaseUser, target: &Target, message: &[u8]);
+    fn send_privmsg_raw_target(&mut self, source: &BaseUser, target: &[u8], message: &[u8]);
 }
 
 pub trait Plugin: 'static {
