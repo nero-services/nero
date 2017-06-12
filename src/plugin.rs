@@ -55,7 +55,7 @@ pub struct HookError {
     pub message: String,
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct Bot {
     pub nick: String,
     pub ident: String,

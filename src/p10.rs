@@ -1200,7 +1200,6 @@ fn p10_irc_privmsg(buffer: &mut Vec<Vec<u8>>, source: &[u8], target: &[u8], mess
 
         buffer.push(format!("{}{}", prefix, dv(&message[begin..end])).into());
     }
-
 }
 
 // murder this
