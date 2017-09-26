@@ -59,7 +59,7 @@ pub fn u8_slice_to_lower(input: &[u8]) -> Vec<u8> {
     use std::ascii::AsciiExt;
 
     let mut buf: Vec<u8> = input.to_vec().clone();
-    for mut byte in &mut buf {
+    for byte in &mut buf {
         byte.make_ascii_lowercase();
     }
 

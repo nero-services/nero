@@ -141,9 +141,9 @@ impl<P: Protocol> NeroData<P> {
         let mut events = mem::replace(&mut self.events, Vec::new());
         let mut plugins = mem::replace(&mut self.plugins, Vec::new());
 
-        for mut event in &mut events {
+        for event in &mut events {
             if event.event_type == hook {
-                let mut plugin = plugins.iter_mut().filter(|x| ptr::eq(&***x, event.plugin_ptr)).next().unwrap();
+                let plugin = plugins.iter_mut().filter(|x| ptr::eq(&***x, event.plugin_ptr)).next().unwrap();
                 let _res = (event.f.0)(self, &mut **plugin, hook_data);
             }
         }
