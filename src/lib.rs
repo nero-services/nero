@@ -3,7 +3,6 @@ extern crate libloading;
 #[macro_use]
 extern crate bitflags;
 extern crate futures;
-extern crate serde;
 #[macro_use]
 extern crate serde_derive;
 extern crate tokio_core;
