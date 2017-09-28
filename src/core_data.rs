@@ -8,7 +8,7 @@ use logger::LogLevel::*;
 use net::ConnectionState;
 use plugin::IrcEvent;
 use protocol::Protocol;
-use plugin::{PluginApi, HookData, HookType};
+use plugin::{PluginApi, HookData};
 use plugin_handler::LoadedPlugin;
 use user::{BaseUser, User};
 use server::Server;
@@ -134,7 +134,7 @@ impl<P: Protocol> NeroData<P> {
         }
     }
 
-    pub fn fire_hook(&mut self, hook: HookType, hook_data: &HookData) {
+    pub fn fire_hook(&mut self, hook_data: &HookData) {
         use std::ptr;
         use std::mem;
 
@@ -142,7 +142,7 @@ impl<P: Protocol> NeroData<P> {
         let mut plugins = mem::replace(&mut self.plugins, Vec::new());
 
         for event in &mut events {
-            if event.event_type == hook {
+            if event.event_type == hook_data.hook_type {
                 let plugin = plugins.iter_mut().filter(|x| ptr::eq(&***x, event.plugin_ptr)).next().unwrap();
                 let _res = (event.f.0)(self, &mut **plugin, hook_data);
             }
