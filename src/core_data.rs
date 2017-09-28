@@ -144,7 +144,12 @@ impl<P: Protocol> NeroData<P> {
         for event in &mut events {
             if event.event_type == hook_data.hook_type {
                 let plugin = plugins.iter_mut().filter(|x| ptr::eq(&***x, event.plugin_ptr)).next().unwrap();
-                let _res = (event.f.0)(self, &mut **plugin, hook_data);
+                match (event.f.0)(self, &mut **plugin, hook_data) {
+                    Ok(_) => {},
+                    Err(e) => {
+                        log(Error, "PLUGIN", format!("Error from plugin: {}", e.message));
+                    }
+                }
             }
         }
 
