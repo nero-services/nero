@@ -1,7 +1,6 @@
 use std::any::TypeId;
 use core_data::Target;
 
-use channel::BaseChannel;
 use server::BaseServer;
 use user::BaseUser;
 
@@ -10,9 +9,9 @@ pub type UnloadFunc = fn() -> bool;
 pub type HookFunc = Box<FnMut(&mut PluginApi, &mut Plugin, &HookData) -> Result<Option<Vec<Vec<u8>>>, HookError>>;
 
 pub struct HookFuncWrapper(pub HookFunc);
-pub const MAGIC: &'static str = "COOKIES";
+pub const MAGIC: &'static str = "WAFFLE";
 
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum HookType {
     UserConnected,
     UserQuit,
@@ -26,10 +25,9 @@ pub enum HookType {
 #[derive(Debug)]
 pub struct HookData {
     pub hook_type: HookType,
-    pub channel: Option<BaseChannel>,
-    pub user: Option<BaseUser>,
     pub server: Option<BaseServer>,
     pub origin: Vec<u8>,
+    pub target: Vec<u8>,
     pub message: Vec<u8>,
     pub argc: usize,
     pub argv: Vec<Vec<u8>>,
@@ -39,10 +37,9 @@ impl HookData {
     pub fn new(hook_type: HookType) -> Self {
         Self {
             hook_type: hook_type,
-            channel: None,
-            user: None,
             server: None,
             origin: Vec::new(),
+            target: Vec::new(),
             message: Vec::new(),
             argc: 0,
             argv: Vec::new(),

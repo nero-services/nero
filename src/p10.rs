@@ -619,7 +619,7 @@ fn p10_cmd_n(core_data: &mut NeroData<P10>, origin: &[u8], argc: usize, argv: &[
                 log(Debug, "MAIN", format!("User {} connecting from {}", dv(&user.base.nick), dv(&user.uplink.borrow().base.hostname)));
 
                 let mut hook_data = HookData::new(UserConnected);
-                hook_data.user = Some(user.base.clone());
+                hook_data.target = user.base.nick.to_vec();
                 hook_data.server = Some(user.uplink.borrow().base.clone());
 
                 core_data.fire_hook(&hook_data);
