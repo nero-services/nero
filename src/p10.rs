@@ -1,7 +1,7 @@
 use std::cell::{RefCell, RefMut};
 use std::rc::Rc;
 
-use core_data::NeroData;
+use core_data::{NeroData, Target};
 use net::ConnectionState;
 
 use channel::Channel;
@@ -142,6 +142,12 @@ impl UserExtDefault for P10UserExt {
     }
 }
 
+impl Target for P10UserExt {
+    fn get_target(&self) -> Vec<u8> {
+        return self.numeric.to_vec().clone();
+    }
+}
+
 impl ChanExtDefault for P10ChannelExt {
     fn new() -> Self {
         Self {
@@ -255,6 +261,8 @@ impl Protocol for P10 {
                 b"B" => p10_cmd_b(core_data, argc-cmd, &newargv),
                 b"T" => p10_cmd_t(core_data, &origin, argc-cmd, &newargv),
                 b"G" => p10_cmd_g(core_data, &origin, argc-cmd, &newargv),
+                b"P" => p10_cmd_textmessage(core_data, &origin, argc-cmd, &newargv, true),
+                b"O" => p10_cmd_textmessage(core_data, &origin, argc-cmd, &newargv, false),
                 b"GL" => p10_cmd_gl(core_data, &origin, argc-cmd, &newargv),
                 b"EB" => p10_cmd_eb(core_data, &origin),
                 b"EA" => p10_cmd_ea(core_data, &origin),
@@ -312,20 +320,14 @@ impl Protocol for P10 {
                 }
             }
         }
-
     }
 
     fn send_privmsg(&self, users: &Vec<Rc<RefCell<User<P10>>>>, write_buffer: &mut Vec<Vec<u8>>, source: &BaseUser, target: &[u8], message: &[u8]) {
-        if let Some(u) = find_user_nick(users, &source.nick) {
-            let borrowed = u.borrow();
-            let numeric = borrowed.ext.numeric.clone();
+        send_textmessage(users, write_buffer, source, target, message, true);
+    }
 
-            if numeric.len() <= 0 {
-                panic!("No numeric specified in source user {}", dv(&source.nick));
-            }
-
-            p10_irc_privmsg(write_buffer, &numeric, target, message);
-        }
+    fn send_notice(&self, users: &Vec<Rc<RefCell<User<P10>>>>, write_buffer: &mut Vec<Vec<u8>>, source: &BaseUser, target: &[u8], message: &[u8]) {
+        send_textmessage(users, write_buffer, source, target, message, false);
     }
 }
 
@@ -445,6 +447,58 @@ fn p10_cmd_g(core_data: &mut NeroData<P10>, _origin: &[u8], argc: usize, argv: &
         let pong_asl_message = &p10_irc_pong_asll(core_data, &argv[2], &argv[3]);
         core_data.add_to_buffer(pong_asl_message);
     }
+
+    Ok(())
+}
+
+fn p10_cmd_textmessage(core_data: &mut NeroData<P10>, origin: &[u8], argc: usize, argv: &[Vec<u8>], is_privmsg: bool) -> Result<(), ()> {
+    use plugin::HookType::*;
+    use plugin::HookData;
+
+    if argc < 2 {
+        return Err(());
+    }
+
+    let user_option = find_user_numeric(core_data, &origin.to_vec()).map(|x| x.clone());
+    if user_option.is_none() {
+        return Err(());
+    }
+
+    let user = user_option.unwrap();
+    let message = &argv[argc-1];
+    let target = &argv[1];
+    let target_prefix = target[0] as char;
+
+    let hook_type = if target_prefix == '#' || target_prefix == '&' {
+        if is_privmsg {
+            PrivmsgChan
+        } else {
+            NoticeChan
+        }
+    } else {
+        if is_privmsg {
+            PrivmsgBot
+        } else {
+            NoticeBot
+        }
+    };
+
+    let mut hook_data = HookData::new(hook_type.clone());
+
+    let target_key = if hook_type == PrivmsgBot {
+        let target_user_option = find_user_numeric(core_data, &target.to_vec()).map(|x| x.clone());
+        let target_user = target_user_option.unwrap();
+        let borrowed = target_user.borrow();
+        borrowed.base.nick.clone()
+    } else {
+        target.clone()
+    };
+
+    hook_data.target = target_key.to_vec();
+    hook_data.origin = user.borrow().base.nick.to_vec();
+    hook_data.message = message.to_vec();
+
+    core_data.fire_hook(&hook_data);
 
     Ok(())
 }
@@ -979,6 +1033,37 @@ fn p10_set_user_mode_helper(user: &mut User<P10>, adding: bool, flag: u64) {
     }
 }
 
+fn send_textmessage(users: &Vec<Rc<RefCell<User<P10>>>>, write_buffer: &mut Vec<Vec<u8>>, source: &BaseUser, target: &[u8], message: &[u8], is_privmsg: bool) {
+    if let Some(u) = find_user_nick(users, &source.nick) {
+        let borrowed = u.borrow();
+        let numeric = borrowed.ext.numeric.clone();
+
+        if numeric.len() <= 0 {
+            panic!("No numeric specified in source user {}", dv(&source.nick));
+        }
+
+        // FIXME
+        // This does not take in to account that a user could have their nickname set as a
+        // numnick for another user.
+        if let Some(t) = find_user_nick(users, &target.to_vec()) {
+            let borrowed_target = t.borrow();
+            let target_numeric = borrowed_target.ext.numeric.clone();
+
+            if is_privmsg {
+                p10_irc_privmsg(write_buffer, &numeric, &target_numeric, message);
+            } else {
+                p10_irc_notice(write_buffer, &numeric, &target_numeric, message);
+            }
+        } else if is_privmsg {
+            p10_irc_privmsg(write_buffer, &numeric, target, message);
+        } else {
+            p10_irc_notice(write_buffer, &numeric, target, message);
+        }
+    } else {
+        log(Error, "P10", format!("Sending message for a user that doesn't exist! {}", dv(&source.nick)));
+    }
+}
+
 
 fn find_channel(core_data: &NeroData<P10>, name: &[u8]) -> Option<Rc<RefCell<Channel<P10>>>> {
     let lower: &[u8] = &u8_slice_to_lower(name);
@@ -1206,6 +1291,22 @@ fn p10_irc_pong_asll(core_data: &NeroData<P10>, who: &[u8], orig_ts: &[u8]) -> V
 
 fn p10_irc_privmsg(buffer: &mut Vec<Vec<u8>>, source: &[u8], target: &[u8], message: &[u8]) {
     let prefix = format!("{} P {} :", dv(&source), dv(&target));
+    let message_count = ceiling_division(message.len() + prefix.len(), 500);
+
+    for ii in 0..message_count {
+        let begin = ii * 500;
+        let end = if (ii + 1) * 500 > message.len() {
+            message.len() + (ii * 500)
+        } else {
+            (ii + 1) * 500
+        };
+
+        buffer.push(format!("{}{}", prefix, dv(&message[begin..end])).into());
+    }
+}
+
+fn p10_irc_notice(buffer: &mut Vec<Vec<u8>>, source: &[u8], target: &[u8], message: &[u8]) {
+    let prefix = format!("{} O {} :", dv(&source), dv(&target));
     let message_count = ceiling_division(message.len() + prefix.len(), 500);
 
     for ii in 0..message_count {

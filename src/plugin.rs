@@ -20,6 +20,8 @@ pub enum HookType {
     ServerSplit,
     PrivmsgChan,
     PrivmsgBot,
+    NoticeChan,
+    NoticeBot,
 }
 
 #[derive(Debug)]
@@ -85,6 +87,8 @@ pub trait PluginApi {
     fn get_user_by_nick(&self, nick: &[u8]) -> Option<BaseUser>;
     fn get_user_by_numeric(&self, numeric: &[u8]) -> Option<BaseUser>;
     fn send_privmsg(&mut self, source: &BaseUser, target: &Target, message: &[u8]);
+    fn send_notice(&mut self, source: &BaseUser, target: &Target, message: &[u8]);
+    fn send_textmessage(&mut self, source: &BaseUser, target: &Target, message: &[u8], privmsg: bool);
     fn send_privmsg_raw_target(&mut self, source: &BaseUser, target: &[u8], message: &[u8]);
 }
 

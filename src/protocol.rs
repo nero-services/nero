@@ -20,6 +20,7 @@ pub trait Protocol: Sized + Send + Sync + 'static {
     fn process(&self, message: &[u8], me: &mut NeroData<Self>);
     fn find_user_by_numeric(&self, users: &Vec<Rc<RefCell<User<Self>>>>, numeric: &[u8]) -> Option<BaseUser>;
     fn send_privmsg(&self, users: &Vec<Rc<RefCell<User<Self>>>>, write_buffer: &mut Vec<Vec<u8>>, source: &BaseUser, target: &[u8], message: &[u8]);
+    fn send_notice(&self, users: &Vec<Rc<RefCell<User<Self>>>>, write_buffer: &mut Vec<Vec<u8>>, source: &BaseUser, target: &[u8], message: &[u8]);
     fn add_local_bot(&self, core_data: &mut NeroData<Self>, bot: &Bot);
 }
 

@@ -34,11 +34,24 @@ impl<P: Protocol> PluginApi for NeroData<P> {
         proto.find_user_by_numeric(&self.users, nick)
     }
 
+    fn send_notice(&mut self, source: &BaseUser, target: &Target, message: &[u8]) {
+        self.send_textmessage(source, target, message, false);
+    }
+
     fn send_privmsg(&mut self, source: &BaseUser, target: &Target, message: &[u8]) {
+        self.send_textmessage(source, target, message, true);
+    }
+
+    fn send_textmessage(&mut self, source: &BaseUser, target: &Target, message: &[u8], privmsg: bool) {
         let target_name = target.get_target();
         let proto = &self.protocol;
         let users = &self.users;
-        proto.send_privmsg(users, &mut self.write_buffer, &source, &target_name, message);
+
+        if privmsg {
+            proto.send_privmsg(users, &mut self.write_buffer, &source, &target_name, message);
+        } else {
+            proto.send_notice(users, &mut self.write_buffer, &source, &target_name, message);
+        }
     }
 
     fn send_privmsg_raw_target(&mut self, source: &BaseUser, target: &[u8], message: &[u8]) {
