@@ -249,6 +249,7 @@ impl Protocol for P10 {
 
             let result = match command {
                 b"SERVER" => p10_cmd_server(core_data, &origin, argc-cmd, &newargv),
+                b"PASS" => p10_cmd_pass(core_data, &origin, argc-cmd, &newargv),
                 b"S" => p10_cmd_server(core_data, &origin, argc-cmd, &newargv),
                 b"N" => p10_cmd_n(core_data, &origin, argc-cmd, &newargv),
                 b"B" => p10_cmd_b(core_data, argc-cmd, &newargv),
@@ -329,6 +330,23 @@ impl Protocol for P10 {
 }
 
 // Commands
+
+fn p10_cmd_pass(core_data: &mut NeroData<P10>, _origin: &[u8], argc: usize, argv: &[Vec<u8>]) -> Result<(), ()> {
+    if argc != 2 {
+        return Err(());
+    }
+
+    if core_data.uplink.is_some() {
+        return Ok(());
+    }
+
+    let recv_pass: &[u8] = &argv[1];
+    if core_data.config.uplink.recv_pass.as_bytes() != recv_pass {
+        log(Error, "MAIN", format!("Uplink password did not match our password"));
+    }
+
+    Ok(())
+}
 
 fn p10_cmd_server(core_data: &mut NeroData<P10>, origin: &[u8], argc: usize, argv: &[Vec<u8>]) -> Result<(), ()> {
     use std::str;
