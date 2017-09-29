@@ -1038,27 +1038,22 @@ fn send_textmessage(users: &Vec<Rc<RefCell<User<P10>>>>, write_buffer: &mut Vec<
         let borrowed = u.borrow();
         let numeric = borrowed.ext.numeric.clone();
 
-        if numeric.len() <= 0 {
+        if numeric.is_empty() {
             panic!("No numeric specified in source user {}", dv(&source.nick));
         }
+
+        let sendfunc = if is_privmsg { p10_irc_privmsg } else { p10_irc_notice };
+        let mut send_target = target.to_vec();
 
         // FIXME
         // This does not take in to account that a user could have their nickname set as a
         // numnick for another user.
         if let Some(t) = find_user_nick(users, &target.to_vec()) {
             let borrowed_target = t.borrow();
-            let target_numeric = borrowed_target.ext.numeric.clone();
-
-            if is_privmsg {
-                p10_irc_privmsg(write_buffer, &numeric, &target_numeric, message);
-            } else {
-                p10_irc_notice(write_buffer, &numeric, &target_numeric, message);
-            }
-        } else if is_privmsg {
-            p10_irc_privmsg(write_buffer, &numeric, target, message);
-        } else {
-            p10_irc_notice(write_buffer, &numeric, target, message);
+            send_target = borrowed_target.ext.numeric.clone();
         }
+
+        sendfunc(write_buffer, &numeric, &send_target, message);
     } else {
         log(Error, "P10", format!("Sending message for a user that doesn't exist! {}", dv(&source.nick)));
     }
