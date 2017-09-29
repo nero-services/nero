@@ -1284,8 +1284,8 @@ fn p10_irc_pong_asll(core_data: &NeroData<P10>, who: &[u8], orig_ts: &[u8]) -> V
     format!("{} Z {} {} 0 {}", numeric, dv(&who), dv(&orig_ts), dv(&orig_ts)).into_bytes()
 }
 
-fn p10_irc_privmsg(buffer: &mut Vec<Vec<u8>>, source: &[u8], target: &[u8], message: &[u8]) {
-    let prefix = format!("{} P {} :", dv(&source), dv(&target));
+fn p10_irc_textmessage(buffer: &mut Vec<Vec<u8>>, source: &[u8], target: &[u8], message: &[u8], cmd: char) {
+    let prefix = format!("{} {} {} :", dv(&source), cmd, dv(&target));
     let message_count = ceiling_division(message.len() + prefix.len(), 500);
 
     for ii in 0..message_count {
@@ -1300,20 +1300,12 @@ fn p10_irc_privmsg(buffer: &mut Vec<Vec<u8>>, source: &[u8], target: &[u8], mess
     }
 }
 
+fn p10_irc_privmsg(buffer: &mut Vec<Vec<u8>>, source: &[u8], target: &[u8], message: &[u8]) {
+    p10_irc_textmessage(buffer, source, target, message, 'P');
+}
+
 fn p10_irc_notice(buffer: &mut Vec<Vec<u8>>, source: &[u8], target: &[u8], message: &[u8]) {
-    let prefix = format!("{} O {} :", dv(&source), dv(&target));
-    let message_count = ceiling_division(message.len() + prefix.len(), 500);
-
-    for ii in 0..message_count {
-        let begin = ii * 500;
-        let end = if (ii + 1) * 500 > message.len() {
-            message.len() + (ii * 500)
-        } else {
-            (ii + 1) * 500
-        };
-
-        buffer.push(format!("{}{}", prefix, dv(&message[begin..end])).into());
-    }
+    p10_irc_textmessage(buffer, source, target, message, 'O');
 }
 
 // murder this
