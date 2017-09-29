@@ -1237,8 +1237,7 @@ fn p10_burst_our_channel(core_data: &mut NeroData<P10>, created: u64, channel_rc
 }
 
 fn p10_burst_our_users(core_data: &mut NeroData<P10>) {
-    let numeric_optional = core_data.config.uplink.numeric.clone();
-    let numeric = numeric_optional.unwrap();
+    let numeric = p10_get_numeric(core_data);
     let now = core_data.now;
 
     for user in &core_data.me.borrow().users {
@@ -1257,6 +1256,11 @@ fn p10_burst_our_users(core_data: &mut NeroData<P10>) {
 }
 
 // IRC Command builders
+fn p10_get_numeric(core_data: &NeroData<P10>) -> String {
+    let numeric_optional = core_data.config.uplink.numeric.clone();
+    numeric_optional.unwrap()
+}
+
 fn p10_irc_user(numeric: &str, now: u64, user: &User<P10>, buffer: &mut Vec<Vec<u8>>) {
     buffer.push(format!("{} N {} 1 {} {} {} +iok _ {} :{}",
         numeric, dv(&user.base.nick), now, dv(&user.base.ident),
@@ -1264,22 +1268,19 @@ fn p10_irc_user(numeric: &str, now: u64, user: &User<P10>, buffer: &mut Vec<Vec<
 }
 
 fn p10_irc_eob(core_data: &NeroData<P10>) -> Vec<u8> {
-    let numeric_optional = core_data.config.uplink.numeric.clone();
-    let numeric = numeric_optional.unwrap();
+    let numeric = p10_get_numeric(core_data);
 
     format!("{} EB", numeric).into_bytes()
 }
 
 fn p10_irc_eob_ack(core_data: &NeroData<P10>) -> Vec<u8> {
-    let numeric_optional = core_data.config.uplink.numeric.clone();
-    let numeric = numeric_optional.unwrap();
+    let numeric = p10_get_numeric(core_data);
 
     format!("{} EA", numeric).into_bytes()
 }
 
 fn p10_irc_pong_asll(core_data: &NeroData<P10>, who: &[u8], orig_ts: &[u8]) -> Vec<u8> {
-    let numeric_optional = core_data.config.uplink.numeric.clone();
-    let numeric = numeric_optional.unwrap();
+    let numeric = p10_get_numeric(core_data);
 
     format!("{} Z {} {} 0 {}", numeric, dv(&who), dv(&orig_ts), dv(&orig_ts)).into_bytes()
 }
