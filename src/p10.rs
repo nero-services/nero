@@ -258,6 +258,7 @@ impl Protocol for P10 {
                 b"PASS" => p10_cmd_pass(core_data, &origin, argc-cmd, &newargv),
                 b"S" => p10_cmd_server(core_data, &origin, argc-cmd, &newargv),
                 b"N" => p10_cmd_n(core_data, &origin, argc-cmd, &newargv),
+                b"Q" => p10_cmd_q(core_data, &origin, argc-cmd, &newargv),
                 b"B" => p10_cmd_b(core_data, argc-cmd, &newargv),
                 b"T" => p10_cmd_t(core_data, &origin, argc-cmd, &newargv),
                 b"G" => p10_cmd_g(core_data, &origin, argc-cmd, &newargv),
@@ -655,6 +656,34 @@ fn p10_cmd_b(core_data: &mut NeroData<P10>, argc: usize, argv: &[Vec<u8>]) -> Re
     Ok(())
 }
 
+// ABAAB Q :Quit: KVIrc 4.9.2 Aria http://www.kvirc.net/
+fn p10_cmd_q(core_data: &mut NeroData<P10>, origin: &[u8], argc: usize, argv: &[Vec<u8>]) -> Result<(), ()> {
+    use plugin::HookType::*;
+    use plugin::HookData;
+
+    let option_user = find_user_numeric(core_data, &origin.to_vec()).map(|x| x.clone());
+
+    if option_user.is_none() {
+        return Err(());
+    }
+
+    let user_rc = option_user.unwrap();
+    let user = user_rc.borrow();
+    let qmessage = &argv[argc-1];
+
+    log(Debug, "MAIN", format!("User {} disconnected from {}: {}",
+        dv(&user.base.nick), dv(&user.uplink.borrow().base.hostname), dv(&qmessage)));
+
+    let mut hook_data = HookData::new(UserQuit);
+    hook_data.target = user.base.nick.to_vec();
+    hook_data.server = Some(user.uplink.borrow().base.clone());
+    hook_data.message = qmessage.to_vec();
+
+    core_data.fire_hook(&hook_data);
+
+    p10_del_user(core_data, origin)
+}
+
 // AB N SightBlind 1 1496365558 kvirc 127.0.0.1 +owgrh blindsight kvirc@blindsight.users.gamesurge B]AAAB ABAAB :KVIrc 4.9.2 Aria http://kvirc.net/
 fn p10_cmd_n(core_data: &mut NeroData<P10>, origin: &[u8], argc: usize, argv: &[Vec<u8>]) -> Result<(), ()> {
     use plugin::HookType::*;
@@ -827,6 +856,47 @@ fn p10_ban_channel_user(channel: &mut Channel<P10>, adding: bool, ban: &[u8]) {
         channel.base.bans.iter().position(|n| n == &ban).map(|e| channel.base.bans.remove(e));
         // println!("Removed ban {} in {}", dv(&ban), dv(&channel.name));
     }
+}
+
+fn p10_del_user(core_data: &mut NeroData<P10>, numeric: &[u8]) -> Result<(), ()> {
+    use std::str;
+
+    if numeric.len() < 3 || numeric.len() > 5 {
+        return Err(())
+    }
+
+    let mut idx: usize = 0;
+    for user in &core_data.users {
+        if &user.borrow().ext.numeric == &numeric.to_vec() {
+            break;
+        }
+
+        if idx == core_data.users.len() - 1 {
+            panic!("Called p10_del_user() but could not find numeric {}", dv(&numeric));
+        }
+
+        idx += 1;
+    }
+
+    core_data.users.remove(idx);
+
+    let server = find_server_from_user(core_data, &numeric.to_vec()).unwrap();
+    idx = 0;
+    for user in &server.borrow().users {
+        if &user.borrow().ext.numeric == &numeric.to_vec() {
+            break;
+        }
+
+        if idx == server.borrow().users.len() - 1{
+            panic!("Called p10_del_user() but could not find numeric for server {}", dv(&numeric))
+        }
+
+        idx += 1;
+    }
+
+    server.borrow_mut().users.remove(idx);
+
+    Ok(())
 }
 
 fn p10_add_user(core_data: &mut NeroData<P10>, option_uplink: Option<Rc<RefCell<Server<P10>>>>, nick: &[u8], ident: &[u8], hostname: &[u8], modes: &[u8], numeric: &[u8], gecos: &[u8], timestamp: &[u8], realip: &[u8]) -> Result<Rc<RefCell<User<P10>>>, ()> {
@@ -1076,6 +1146,23 @@ fn find_server_numeric<'a>(core_data: &'a NeroData<P10>, numeric: &[u8]) -> Opti
     for server in &core_data.servers {
         if &server.borrow().ext.numeric as &[u8] == numeric {
             return Some(server);
+        }
+    }
+
+    None
+}
+
+fn find_server_from_user(core_data: &NeroData<P10>, numeric: &Vec<u8>) -> Option<Rc<RefCell<Server<P10>>>> {
+    let mut lookup_numeric = numeric.clone();
+    while lookup_numeric.len() > 2 {
+        lookup_numeric.pop();
+    }
+
+    assert!(lookup_numeric.len() == 2);
+
+    for server in &core_data.servers {
+        if server.borrow().ext.numeric == lookup_numeric {
+            return Some(server.clone());
         }
     }
 
