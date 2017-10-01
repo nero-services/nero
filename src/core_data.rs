@@ -94,12 +94,13 @@ impl<P: Protocol> NeroData<P> {
     pub fn new(config: Config) -> Self {
         let my_hostname = config.uplink.hostname.clone().into_bytes();
         let my_description = config.uplink.description.clone().into_bytes();
+        let me = Rc::new(RefCell::new(Server::<P>::new(&my_hostname, &my_description)));
 
-        Self {
+        let mut s = Self {
             state: ConnectionState::Connecting,
             now: 0,
             uplink: None,
-            me: Rc::new(RefCell::new(Server::<P>::new(&my_hostname, &my_description))),
+            me: me.clone(),
             channels: Vec::new(),
             unbursted_channels: Vec::new(),
             servers: Vec::new(),
@@ -109,7 +110,10 @@ impl<P: Protocol> NeroData<P> {
             config: config,
             write_buffer: Vec::new(),
             protocol: P::new(),
-        }
+        };
+
+        s.servers.push(me);
+        s
     }
 
     pub fn add_to_buffer(&mut self, data: &[u8]) {
