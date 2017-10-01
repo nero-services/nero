@@ -84,12 +84,18 @@ pub struct IrcEvent {
 }
 
 pub trait PluginApi {
-    fn get_user_by_nick(&self, nick: &[u8]) -> Option<BaseUser>;
-    fn get_user_by_numeric(&self, numeric: &[u8]) -> Option<BaseUser>;
+    // PRIVMSG/NOTICE sending
     fn send_privmsg(&mut self, source: &BaseUser, target: &Target, message: &[u8]);
     fn send_notice(&mut self, source: &BaseUser, target: &Target, message: &[u8]);
-    fn send_textmessage(&mut self, source: &BaseUser, target: &Target, message: &[u8], privmsg: bool);
     fn send_privmsg_raw_target(&mut self, source: &BaseUser, target: &[u8], message: &[u8]);
+    fn send_textmessage(&mut self, source: &BaseUser, target: &Target, message: &[u8], privmsg: bool);
+    // Lookups
+    fn get_user_by_nick(&self, nick: &[u8]) -> Option<BaseUser>;
+    fn get_user_by_numeric(&self, numeric: &[u8]) -> Option<BaseUser>;
+    // Stats
+    fn get_user_count(&self) -> usize;
+    fn get_channel_count(&self) -> usize;
+    fn get_server_count(&self) -> usize;
 }
 
 pub trait Plugin: 'static {

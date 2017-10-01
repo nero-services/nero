@@ -34,6 +34,18 @@ impl<P: Protocol> PluginApi for NeroData<P> {
         proto.find_user_by_numeric(&self.users, nick)
     }
 
+    fn get_user_count(&self) -> usize {
+        self.users.len()
+    }
+
+    fn get_channel_count(&self) -> usize {
+        self.channels.len()
+    }
+
+    fn get_server_count(&self) -> usize {
+        self.servers.len()
+    }
+
     fn send_notice(&mut self, source: &BaseUser, target: &Target, message: &[u8]) {
         self.send_textmessage(source, target, message, false);
     }
